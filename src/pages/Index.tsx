@@ -1,10 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { BettingPanel } from '@/components/BettingPanel';
 import { BetHistory } from '@/components/BetHistory';
 import { MultiplierDisplay } from '@/components/MultiplierDisplay';
+import { DepositModal } from '@/components/DepositModal';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/hooks/useAuth';
+import { useProfile } from '@/hooks/useProfile';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Plane, Trophy, TrendingUp } from 'lucide-react';
+import { Plane, Trophy, TrendingUp, LogOut } from 'lucide-react';
 
 interface Bet {
   id: string;
@@ -16,7 +21,10 @@ interface Bet {
 }
 
 const Index = () => {
-  const [balance, setBalance] = useState(10000);
+  const navigate = useNavigate();
+  const { user, loading: authLoading, signOut } = useAuth();
+  const { profile, loading: profileLoading, refetch: refetchProfile } = useProfile(user?.id);
+
   const [currentBet, setCurrentBet] = useState(0);
   const [multiplier, setMultiplier] = useState(1.0);
   const [isFlying, setIsFlying] = useState(false);
@@ -24,6 +32,47 @@ const Index = () => {
   const [betHistory, setBetHistory] = useState<Bet[]>([]);
   const [canBet, setCanBet] = useState(true);
   const [canCashOut, setCanCashOut] = useState(false);
+
+  // Redirect to auth if not logged in
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate('/auth');
+    }
+  }, [user, authLoading, navigate]);
+
+  // Load bet history
+  useEffect(() => {
+    if (!user) return;
+
+    const loadBetHistory = async () => {
+      const { data, error } = await supabase
+        .from('bet_history')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (error) {
+        console.error('Error loading bet history:', error);
+        return;
+      }
+
+      if (data) {
+        setBetHistory(
+          data.map((bet) => ({
+            id: bet.id,
+            amount: parseFloat(bet.amount.toString()),
+            multiplier: parseFloat(bet.multiplier.toString()),
+            payout: parseFloat(bet.payout.toString()),
+            won: bet.won,
+            time: new Date(bet.created_at).toLocaleTimeString(),
+          }))
+        );
+      }
+    };
+
+    loadBetHistory();
+  }, [user]);
 
   // Game loop
   useEffect(() => {
@@ -35,7 +84,7 @@ const Index = () => {
         const newMultiplier = prev + increment;
 
         // Random crash probability increases with multiplier
-        const crashProbability = 0.02 + (newMultiplier / 100);
+        const crashProbability = 0.02 + newMultiplier / 100;
         if (Math.random() < crashProbability) {
           handleCrash();
           return prev;
@@ -48,12 +97,33 @@ const Index = () => {
     return () => clearInterval(interval);
   }, [isFlying]);
 
-  const handleCrash = useCallback(() => {
+  const handleCrash = useCallback(async () => {
     setIsFlying(false);
     setCrashed(true);
     setCanCashOut(false);
 
-    if (currentBet > 0) {
+    if (currentBet > 0 && user) {
+      // Record lost bet
+      const { error } = await supabase.from('bet_history').insert({
+        user_id: user.id,
+        amount: currentBet,
+        multiplier,
+        payout: 0,
+        won: false,
+      });
+
+      if (error) {
+        console.error('Error recording bet:', error);
+      }
+
+      // Record bet transaction
+      await supabase.from('transactions').insert({
+        user_id: user.id,
+        amount: -currentBet,
+        type: 'bet',
+        description: `Lost bet at ${multiplier.toFixed(2)}x`,
+      });
+
       const bet: Bet = {
         id: Date.now().toString(),
         amount: currentBet,
@@ -71,7 +141,7 @@ const Index = () => {
     setTimeout(() => {
       startNewRound();
     }, 3000);
-  }, [currentBet, multiplier]);
+  }, [currentBet, multiplier, user]);
 
   const startNewRound = () => {
     setCrashed(false);
@@ -82,24 +152,68 @@ const Index = () => {
     }, 2000);
   };
 
-  const handleBet = (amount: number) => {
+  const handleBet = async (amount: number) => {
+    if (!profile || !user) return;
+
+    const balance = parseFloat(profile.balance.toString());
     if (amount > balance) {
       toast.error('Insufficient balance!');
       return;
     }
 
-    setBalance((prev) => prev - amount);
+    // Deduct bet from balance
+    const { error } = await supabase
+      .from('profiles')
+      .update({ balance: balance - amount })
+      .eq('id', user.id);
+
+    if (error) {
+      toast.error('Failed to place bet');
+      console.error('Error placing bet:', error);
+      return;
+    }
+
     setCurrentBet(amount);
     setCanBet(false);
     setCanCashOut(true);
+    refetchProfile();
     toast.success(`Bet placed: KSh ${amount.toLocaleString()}`);
   };
 
-  const handleCashOut = () => {
-    if (currentBet === 0) return;
+  const handleCashOut = async () => {
+    if (currentBet === 0 || !user || !profile) return;
 
     const payout = Math.floor(currentBet * multiplier);
-    setBalance((prev) => prev + payout);
+    const balance = parseFloat(profile.balance.toString());
+
+    // Add winnings to balance
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ balance: balance + payout })
+      .eq('id', user.id);
+
+    if (updateError) {
+      toast.error('Failed to cash out');
+      console.error('Error cashing out:', updateError);
+      return;
+    }
+
+    // Record winning bet
+    await supabase.from('bet_history').insert({
+      user_id: user.id,
+      amount: currentBet,
+      multiplier,
+      payout,
+      won: true,
+    });
+
+    // Record win transaction
+    await supabase.from('transactions').insert({
+      user_id: user.id,
+      amount: payout,
+      type: 'win',
+      description: `Won at ${multiplier.toFixed(2)}x`,
+    });
 
     const bet: Bet = {
       id: Date.now().toString(),
@@ -113,22 +227,40 @@ const Index = () => {
     setBetHistory((prev) => [bet, ...prev]);
     setCurrentBet(0);
     setCanCashOut(false);
-    
+    refetchProfile();
+
     toast.success(
       `Cashed out at ${multiplier.toFixed(2)}x! Won KSh ${payout.toLocaleString()}`,
-      {
-        icon: '🎉',
-      }
+      { icon: '🎉' }
     );
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/auth');
   };
 
   // Start the first round
   useEffect(() => {
+    if (!user) return;
+
     const timer = setTimeout(() => {
       startNewRound();
     }, 2000);
     return () => clearTimeout(timer);
-  }, []);
+  }, [user]);
+
+  // Show loading while checking auth
+  if (authLoading || profileLoading || !profile) {
+    return (
+      <div className="min-h-screen bg-gradient-game flex items-center justify-center">
+        <div className="text-center">
+          <Plane className="h-16 w-16 text-primary animate-float mx-auto mb-4" />
+          <p className="text-xl text-muted-foreground">Loading HelaKenya...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-game">
@@ -143,13 +275,18 @@ const Index = () => {
                 <p className="text-xs text-muted-foreground">Aviator Game</p>
               </div>
             </div>
-            <div className="flex items-center gap-6">
+            <div className="flex items-center gap-4">
               <div className="text-right">
                 <div className="text-xs text-muted-foreground">Your Balance</div>
                 <div className="text-xl font-bold text-game-gold">
-                  KSh {balance.toLocaleString()}
+                  KSh {parseFloat(profile.balance.toString()).toLocaleString()}
                 </div>
               </div>
+              <DepositModal userId={user!.id} onDepositSuccess={refetchProfile} />
+              <Button variant="ghost" size="sm" onClick={handleSignOut} className="gap-2">
+                <LogOut className="h-4 w-4" />
+                Sign Out
+              </Button>
             </div>
           </div>
         </div>
@@ -207,7 +344,7 @@ const Index = () => {
               onCashOut={handleCashOut}
               canBet={canBet}
               canCashOut={canCashOut}
-              balance={balance}
+              balance={parseFloat(profile.balance.toString())}
               currentBet={currentBet}
             />
           </div>
@@ -235,7 +372,7 @@ const Index = () => {
             HelaKenya Aviator - Demo Mode with Play Money
           </p>
           <p className="text-xs text-muted-foreground mt-2">
-            This is a demonstration. No real money is involved.
+            Welcome, {profile.full_name || user!.email}!
           </p>
         </div>
       </footer>
