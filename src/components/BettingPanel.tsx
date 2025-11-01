@@ -34,11 +34,6 @@ export const BettingPanel = ({
   return (
     <Card className="p-6 bg-card border-border">
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">Balance</span>
-          <span className="text-xl font-bold text-game-gold">KSh {balance.toLocaleString()}</span>
-        </div>
-
         {currentBet > 0 && (
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Current Bet</span>
@@ -47,7 +42,7 @@ export const BettingPanel = ({
         )}
 
         <div className="space-y-2">
-          <label className="text-sm text-muted-foreground">Bet Amount</label>
+          <label className="text-sm text-muted-foreground">Bet Amount (Min: KSh 10)</label>
           <div className="flex gap-2">
             <Button
               variant="outline"
@@ -96,7 +91,7 @@ export const BettingPanel = ({
             size="lg"
             className="w-full"
             onClick={() => onBet(betAmount)}
-            disabled={betAmount > balance}
+            disabled={betAmount > balance || betAmount < 10}
           >
             Place Bet
           </Button>

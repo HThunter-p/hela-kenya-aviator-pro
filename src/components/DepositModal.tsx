@@ -24,13 +24,14 @@ export const DepositModal = ({ userId, onDepositSuccess }: DepositModalProps) =>
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const quickAmounts = [500, 1000, 5000, 10000];
+  const quickAmounts = [100, 500, 1000, 5000];
+  const MIN_DEPOSIT = 100;
 
   const handleDeposit = async () => {
     const depositAmount = parseFloat(amount);
 
-    if (!depositAmount || depositAmount <= 0) {
-      toast.error('Please enter a valid amount');
+    if (!depositAmount || depositAmount < MIN_DEPOSIT) {
+      toast.error(`Please enter minimum amount of KSh ${MIN_DEPOSIT}`);
       return;
     }
 
@@ -96,7 +97,7 @@ export const DepositModal = ({ userId, onDepositSuccess }: DepositModalProps) =>
         <DialogHeader>
           <DialogTitle className="text-2xl">Deposit Funds</DialogTitle>
           <DialogDescription>
-            Add money to your HelaKenya account (Demo Mode)
+            Add money to your HelaKenya account (Minimum: KSh 100)
           </DialogDescription>
         </DialogHeader>
 

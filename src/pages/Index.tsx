@@ -7,6 +7,8 @@ import { DepositModal } from '@/components/DepositModal';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
+import { useAdmin } from '@/hooks/useAdmin';
+import { AdminPanel } from '@/components/AdminPanel';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Plane, Trophy, TrendingUp, LogOut } from 'lucide-react';
@@ -24,6 +26,7 @@ const Index = () => {
   const navigate = useNavigate();
   const { user, loading: authLoading, signOut } = useAuth();
   const { profile, loading: profileLoading, refetch: refetchProfile } = useProfile(user?.id);
+  const { isAdmin, loading: adminLoading } = useAdmin(user?.id);
 
   const [currentBets, setCurrentBets] = useState<{ [key: number]: number }>({ 1: 0, 2: 0, 3: 0 });
   const [multiplier, setMultiplier] = useState(1.0);
@@ -340,6 +343,11 @@ const Index = () => {
 
         {/* Main Game Area */}
         <div className="space-y-6">
+          {/* Admin Panel */}
+          {isAdmin && (
+            <AdminPanel />
+          )}
+
           {/* Game Display */}
           <MultiplierDisplay
             multiplier={multiplier}
