@@ -154,7 +154,8 @@ const Index = () => {
     setCanBet(true);
     setTimeout(() => {
       setIsFlying(true);
-    }, 2000);
+      setCanBet(false);
+    }, 10000);
   };
 
   const handleBet = async (panelId: number, amount: number) => {
@@ -179,7 +180,6 @@ const Index = () => {
     }
 
     setCurrentBets(prev => ({ ...prev, [panelId]: amount }));
-    setCanBet(false);
     setCanCashOut(prev => ({ ...prev, [panelId]: true }));
     refetchProfile();
     toast.success(`Panel ${panelId}: Bet placed KSh ${amount.toLocaleString()}`);
