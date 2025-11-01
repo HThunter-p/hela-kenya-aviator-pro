@@ -86,8 +86,14 @@ const Index = () => {
         const increment = Math.random() * 0.1 + 0.05;
         const newMultiplier = prev + increment;
 
-        // Random crash probability increases with multiplier
-        const crashProbability = 0.02 + newMultiplier / 100;
+        // Highly unpredictable crash probability with multiple random factors
+        const baseProb = 0.015;
+        const multiplierFactor = Math.pow(newMultiplier, 1.5) / 1000;
+        const randomSpike = Math.random() < 0.1 ? Math.random() * 0.05 : 0;
+        const timeVariance = Math.sin(Date.now() / 1000) * 0.01;
+        
+        const crashProbability = baseProb + multiplierFactor + randomSpike + Math.abs(timeVariance);
+        
         if (Math.random() < crashProbability) {
           handleCrash();
           return prev;
