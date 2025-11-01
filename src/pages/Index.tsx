@@ -25,13 +25,13 @@ const Index = () => {
   const { user, loading: authLoading, signOut } = useAuth();
   const { profile, loading: profileLoading, refetch: refetchProfile } = useProfile(user?.id);
 
-  const [currentBet, setCurrentBet] = useState(0);
+  const [currentBets, setCurrentBets] = useState<{ [key: number]: number }>({ 1: 0, 2: 0, 3: 0 });
   const [multiplier, setMultiplier] = useState(1.0);
   const [isFlying, setIsFlying] = useState(false);
   const [crashed, setCrashed] = useState(false);
   const [betHistory, setBetHistory] = useState<Bet[]>([]);
   const [canBet, setCanBet] = useState(true);
-  const [canCashOut, setCanCashOut] = useState(false);
+  const [canCashOut, setCanCashOut] = useState<{ [key: number]: boolean }>({ 1: false, 2: false, 3: false });
 
   // Redirect to auth if not logged in
   useEffect(() => {
@@ -100,40 +100,42 @@ const Index = () => {
   const handleCrash = useCallback(async () => {
     setIsFlying(false);
     setCrashed(true);
-    setCanCashOut(false);
+    setCanCashOut({ 1: false, 2: false, 3: false });
 
-    if (currentBet > 0 && user) {
-      // Record lost bet
-      const { error } = await supabase.from('bet_history').insert({
-        user_id: user.id,
-        amount: currentBet,
-        multiplier,
-        payout: 0,
-        won: false,
-      });
+    // Process all active bets
+    const activeBets = Object.entries(currentBets).filter(([_, amount]) => amount > 0);
+    
+    if (activeBets.length > 0 && user) {
+      for (const [panelId, betAmount] of activeBets) {
+        // Record lost bet
+        await supabase.from('bet_history').insert({
+          user_id: user.id,
+          amount: betAmount,
+          multiplier,
+          payout: 0,
+          won: false,
+        });
 
-      if (error) {
-        console.error('Error recording bet:', error);
+        // Record bet transaction
+        await supabase.from('transactions').insert({
+          user_id: user.id,
+          amount: -betAmount,
+          type: 'bet',
+          description: `Lost bet at ${multiplier.toFixed(2)}x (Panel ${panelId})`,
+        });
+
+        const bet: Bet = {
+          id: `${Date.now()}-${panelId}`,
+          amount: betAmount,
+          multiplier,
+          payout: 0,
+          won: false,
+          time: new Date().toLocaleTimeString(),
+        };
+        setBetHistory((prev) => [bet, ...prev]);
       }
-
-      // Record bet transaction
-      await supabase.from('transactions').insert({
-        user_id: user.id,
-        amount: -currentBet,
-        type: 'bet',
-        description: `Lost bet at ${multiplier.toFixed(2)}x`,
-      });
-
-      const bet: Bet = {
-        id: Date.now().toString(),
-        amount: currentBet,
-        multiplier,
-        payout: 0,
-        won: false,
-        time: new Date().toLocaleTimeString(),
-      };
-      setBetHistory((prev) => [bet, ...prev]);
-      setCurrentBet(0);
+      
+      setCurrentBets({ 1: 0, 2: 0, 3: 0 });
       toast.error(`Crashed at ${multiplier.toFixed(2)}x! Better luck next time.`);
     }
 
@@ -141,7 +143,7 @@ const Index = () => {
     setTimeout(() => {
       startNewRound();
     }, 3000);
-  }, [currentBet, multiplier, user]);
+  }, [currentBets, multiplier, user]);
 
   const startNewRound = () => {
     setCrashed(false);
@@ -152,7 +154,7 @@ const Index = () => {
     }, 2000);
   };
 
-  const handleBet = async (amount: number) => {
+  const handleBet = async (panelId: number, amount: number) => {
     if (!profile || !user) return;
 
     const balance = parseFloat(profile.balance.toString());
@@ -173,14 +175,15 @@ const Index = () => {
       return;
     }
 
-    setCurrentBet(amount);
+    setCurrentBets(prev => ({ ...prev, [panelId]: amount }));
     setCanBet(false);
-    setCanCashOut(true);
+    setCanCashOut(prev => ({ ...prev, [panelId]: true }));
     refetchProfile();
-    toast.success(`Bet placed: KSh ${amount.toLocaleString()}`);
+    toast.success(`Panel ${panelId}: Bet placed KSh ${amount.toLocaleString()}`);
   };
 
-  const handleCashOut = async () => {
+  const handleCashOut = async (panelId: number) => {
+    const currentBet = currentBets[panelId];
     if (currentBet === 0 || !user || !profile) return;
 
     const payout = Math.floor(currentBet * multiplier);
@@ -212,11 +215,11 @@ const Index = () => {
       user_id: user.id,
       amount: payout,
       type: 'win',
-      description: `Won at ${multiplier.toFixed(2)}x`,
+      description: `Won at ${multiplier.toFixed(2)}x (Panel ${panelId})`,
     });
 
     const bet: Bet = {
-      id: Date.now().toString(),
+      id: `${Date.now()}-${panelId}`,
       amount: currentBet,
       multiplier,
       payout,
@@ -225,12 +228,12 @@ const Index = () => {
     };
 
     setBetHistory((prev) => [bet, ...prev]);
-    setCurrentBet(0);
-    setCanCashOut(false);
+    setCurrentBets(prev => ({ ...prev, [panelId]: 0 }));
+    setCanCashOut(prev => ({ ...prev, [panelId]: false }));
     refetchProfile();
 
     toast.success(
-      `Cashed out at ${multiplier.toFixed(2)}x! Won KSh ${payout.toLocaleString()}`,
+      `Panel ${panelId}: Cashed out at ${multiplier.toFixed(2)}x! Won KSh ${payout.toLocaleString()}`,
       { icon: '🎉' }
     );
   };
@@ -336,26 +339,27 @@ const Index = () => {
         </div>
 
         {/* Main Game Area */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Panel - Betting */}
-          <div className="lg:col-span-1">
-            <BettingPanel
-              onBet={handleBet}
-              onCashOut={handleCashOut}
-              canBet={canBet}
-              canCashOut={canCashOut}
-              balance={parseFloat(profile.balance.toString())}
-              currentBet={currentBet}
-            />
-          </div>
+        <div className="space-y-6">
+          {/* Game Display */}
+          <MultiplierDisplay
+            multiplier={multiplier}
+            isFlying={isFlying}
+            crashed={crashed}
+          />
 
-          {/* Center - Game Display */}
-          <div className="lg:col-span-2">
-            <MultiplierDisplay
-              multiplier={multiplier}
-              isFlying={isFlying}
-              crashed={crashed}
-            />
+          {/* Three Betting Panels */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[1, 2, 3].map((panelId) => (
+              <BettingPanel
+                key={panelId}
+                onBet={(amount) => handleBet(panelId, amount)}
+                onCashOut={() => handleCashOut(panelId)}
+                canBet={canBet}
+                canCashOut={canCashOut[panelId]}
+                balance={parseFloat(profile.balance.toString())}
+                currentBet={currentBets[panelId]}
+              />
+            ))}
           </div>
         </div>
 
