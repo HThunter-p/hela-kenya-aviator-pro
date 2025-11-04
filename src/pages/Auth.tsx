@@ -14,6 +14,7 @@ const signUpSchema = z.object({
   email: z.string().email('Invalid email address'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
   fullName: z.string().min(2, 'Full name must be at least 2 characters'),
+  phoneNumber: z.string().regex(/^(?:\+254|0)[17]\d{8}$/, 'Invalid Kenyan phone number (e.g., +254712345678 or 0712345678)'),
 });
 
 const signInSchema = z.object({
@@ -29,6 +30,7 @@ const Auth = () => {
     email: '',
     password: '',
     fullName: '',
+    phoneNumber: '',
   });
 
   const [signInData, setSignInData] = useState({
@@ -49,6 +51,7 @@ const Auth = () => {
         options: {
           data: {
             full_name: validated.fullName,
+            phone_number: validated.phoneNumber,
           },
           emailRedirectTo: `${window.location.origin}/`,
         },
@@ -211,6 +214,20 @@ const Auth = () => {
                   value={signUpData.password}
                   onChange={(e) =>
                     setSignUpData({ ...signUpData, password: e.target.value })
+                  }
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="signup-phone">Phone Number</Label>
+                <Input
+                  id="signup-phone"
+                  type="tel"
+                  placeholder="+254712345678 or 0712345678"
+                  value={signUpData.phoneNumber}
+                  onChange={(e) =>
+                    setSignUpData({ ...signUpData, phoneNumber: e.target.value })
                   }
                   required
                 />

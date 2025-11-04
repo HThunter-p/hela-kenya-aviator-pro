@@ -6,6 +6,8 @@ interface Profile {
   email: string;
   full_name: string | null;
   balance: number;
+  phone_number: string | null;
+  referral_code: string | null;
   created_at: string;
   updated_at: string;
 }

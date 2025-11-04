@@ -9,6 +9,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
 import { useAdmin } from '@/hooks/useAdmin';
 import { AdminPanel } from '@/components/AdminPanel';
+import Navigation from '@/components/Navigation';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Plane, Trophy, TrendingUp, LogOut } from 'lucide-react';
@@ -275,7 +276,7 @@ const Index = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-game">
+    <div className="min-h-screen bg-gradient-game pb-20">
       {/* Header */}
       <header className="border-b border-border bg-card/50 backdrop-blur-lg sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
@@ -394,6 +395,8 @@ const Index = () => {
           </p>
         </div>
       </footer>
+      
+      <Navigation />
     </div>
   );
 };
