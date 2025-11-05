@@ -43,21 +43,25 @@ export const DepositModal = ({ userId, onDepositSuccess }: DepositModalProps) =>
     setLoading(true);
 
     try {
-      // Get current balance
+      // Get current profile with referrer info
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('balance')
+        .select('balance, first_deposit_made, referrer_id')
         .eq('id', userId)
         .single();
 
       if (profileError) throw profileError;
 
       const newBalance = parseFloat(profile.balance.toString()) + depositAmount;
+      const isFirstDeposit = !profile.first_deposit_made;
 
-      // Update balance
+      // Update balance and first deposit flag
       const { error: updateError } = await supabase
         .from('profiles')
-        .update({ balance: newBalance })
+        .update({ 
+          balance: newBalance,
+          first_deposit_made: true 
+        })
         .eq('id', userId);
 
       if (updateError) throw updateError;
@@ -73,6 +77,38 @@ export const DepositModal = ({ userId, onDepositSuccess }: DepositModalProps) =>
         });
 
       if (transactionError) throw transactionError;
+
+      // Handle referral bonus (10% of first deposit)
+      if (isFirstDeposit && profile.referrer_id) {
+        const bonusAmount = depositAmount * 0.1;
+        
+        // Get referrer's current balance
+        const { data: referrerProfile } = await supabase
+          .from('profiles')
+          .select('balance')
+          .eq('id', profile.referrer_id)
+          .single();
+
+        if (referrerProfile) {
+          const referrerNewBalance = parseFloat(referrerProfile.balance.toString()) + bonusAmount;
+          
+          // Update referrer's balance
+          await supabase
+            .from('profiles')
+            .update({ balance: referrerNewBalance })
+            .eq('id', profile.referrer_id);
+
+          // Record referral bonus transaction
+          await supabase
+            .from('transactions')
+            .insert({
+              user_id: profile.referrer_id,
+              amount: bonusAmount,
+              type: 'deposit',
+              description: `Referral bonus (10% of KSh ${depositAmount.toLocaleString()})`,
+            });
+        }
+      }
 
       toast.success(`Successfully deposited KSh ${depositAmount.toLocaleString()}!`);
       setAmount('');

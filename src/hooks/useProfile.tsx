@@ -8,6 +8,8 @@ interface Profile {
   balance: number;
   phone_number: string | null;
   referral_code: string | null;
+  first_deposit_made: boolean;
+  referrer_id: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -78,33 +78,47 @@ export type Database = {
           balance: number
           created_at: string
           email: string
+          first_deposit_made: boolean | null
           full_name: string | null
           id: string
           phone_number: string | null
           referral_code: string | null
+          referrer_id: string | null
           updated_at: string
         }
         Insert: {
           balance?: number
           created_at?: string
           email: string
+          first_deposit_made?: boolean | null
           full_name?: string | null
           id: string
           phone_number?: string | null
           referral_code?: string | null
+          referrer_id?: string | null
           updated_at?: string
         }
         Update: {
           balance?: number
           created_at?: string
           email?: string
+          first_deposit_made?: boolean | null
           full_name?: string | null
           id?: string
           phone_number?: string | null
           referral_code?: string | null
+          referrer_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_referrer_id_fkey"
+            columns: ["referrer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       referrals: {
         Row: {
@@ -204,32 +218,48 @@ export type Database = {
       withdrawals: {
         Row: {
           amount: number
+          approved_at: string | null
+          approved_by: string | null
           created_at: string
           id: string
           phone_number: string
+          rejection_reason: string | null
           status: string
           updated_at: string
           user_id: string
         }
         Insert: {
           amount: number
+          approved_at?: string | null
+          approved_by?: string | null
           created_at?: string
           id?: string
           phone_number: string
+          rejection_reason?: string | null
           status?: string
           updated_at?: string
           user_id: string
         }
         Update: {
           amount?: number
+          approved_at?: string | null
+          approved_by?: string | null
           created_at?: string
           id?: string
           phone_number?: string
+          rejection_reason?: string | null
           status?: string
           updated_at?: string
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "withdrawals_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "withdrawals_user_id_fkey"
             columns: ["user_id"]

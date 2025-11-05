@@ -9,6 +9,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
 import { useAdmin } from '@/hooks/useAdmin';
 import { AdminPanel } from '@/components/AdminPanel';
+import { AdminWithdrawals } from '@/components/AdminWithdrawals';
 import Navigation from '@/components/Navigation';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -36,6 +37,7 @@ const Index = () => {
   const [betHistory, setBetHistory] = useState<Bet[]>([]);
   const [canBet, setCanBet] = useState(true);
   const [canCashOut, setCanCashOut] = useState<{ [key: number]: boolean }>({ 1: false, 2: false, 3: false });
+  const [autoplay, setAutoplay] = useState<{ [key: number]: boolean }>({ 1: false, 2: false, 3: false });
 
   // Redirect to auth if not logged in
   useEffect(() => {
@@ -159,6 +161,17 @@ const Index = () => {
     setCrashed(false);
     setMultiplier(1.0);
     setCanBet(true);
+    
+    // Auto-bet for panels with autoplay enabled
+    setTimeout(() => {
+      Object.entries(autoplay).forEach(([panelId, enabled]) => {
+        if (enabled && currentBets[Number(panelId)] === 0) {
+          // Use last bet amount or default
+          handleBet(Number(panelId), 100);
+        }
+      });
+    }, 9000); // Place bets 1 second before flight starts
+    
     setTimeout(() => {
       setIsFlying(true);
       setCanBet(false);
@@ -352,7 +365,10 @@ const Index = () => {
         <div className="space-y-6">
           {/* Admin Panel */}
           {isAdmin && (
-            <AdminPanel />
+            <>
+              <AdminPanel />
+              <AdminWithdrawals />
+            </>
           )}
 
           {/* Game Display */}
@@ -373,6 +389,8 @@ const Index = () => {
                 canCashOut={canCashOut[panelId]}
                 balance={parseFloat(profile.balance.toString())}
                 currentBet={currentBets[panelId]}
+                autoplay={autoplay[panelId]}
+                onAutoplayChange={(enabled) => setAutoplay(prev => ({ ...prev, [panelId]: enabled }))}
               />
             ))}
           </div>

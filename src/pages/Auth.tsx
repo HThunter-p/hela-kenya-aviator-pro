@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -24,7 +24,9 @@ const signInSchema = z.object({
 
 const Auth = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
+  const [referralCode, setReferralCode] = useState<string | null>(null);
 
   const [signUpData, setSignUpData] = useState({
     email: '',
@@ -32,6 +34,15 @@ const Auth = () => {
     fullName: '',
     phoneNumber: '',
   });
+
+  // Check for referral code in URL
+  useEffect(() => {
+    const refCode = searchParams.get('ref');
+    if (refCode) {
+      setReferralCode(refCode);
+      toast.info('Signing up with referral code!');
+    }
+  }, [searchParams]);
 
   const [signInData, setSignInData] = useState({
     email: '',
@@ -67,6 +78,29 @@ const Auth = () => {
       }
 
       if (data.user) {
+        // If there's a referral code, link it to the new user
+        if (referralCode) {
+          const { data: referrerData } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('referral_code', referralCode)
+            .maybeSingle();
+
+          if (referrerData) {
+            await supabase
+              .from('profiles')
+              .update({ referrer_id: referrerData.id })
+              .eq('id', data.user.id);
+
+            await supabase
+              .from('referrals')
+              .insert({
+                referrer_id: referrerData.id,
+                referred_id: data.user.id,
+              });
+          }
+        }
+
         toast.success('Account created successfully! Welcome to HelaKenya!');
         navigate('/');
       }

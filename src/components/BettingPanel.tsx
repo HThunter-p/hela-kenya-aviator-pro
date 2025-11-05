@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { Minus, Plus } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Minus, Plus, Zap } from 'lucide-react';
 
 interface BettingPanelProps {
   onBet: (amount: number) => void;
@@ -11,6 +13,8 @@ interface BettingPanelProps {
   canCashOut: boolean;
   balance: number;
   currentBet: number;
+  autoplay?: boolean;
+  onAutoplayChange?: (enabled: boolean) => void;
 }
 
 export const BettingPanel = ({
@@ -20,6 +24,8 @@ export const BettingPanel = ({
   canCashOut,
   balance,
   currentBet,
+  autoplay = false,
+  onAutoplayChange,
 }: BettingPanelProps) => {
   const [betAmount, setBetAmount] = useState(100);
 
@@ -38,6 +44,20 @@ export const BettingPanel = ({
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Current Bet</span>
             <span className="text-lg font-bold text-primary">KSh {currentBet.toLocaleString()}</span>
+          </div>
+        )}
+
+        {onAutoplayChange && (
+          <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+            <div className="flex items-center gap-2">
+              <Zap className="h-4 w-4 text-primary" />
+              <Label htmlFor="autoplay" className="cursor-pointer">Autoplay</Label>
+            </div>
+            <Switch
+              id="autoplay"
+              checked={autoplay}
+              onCheckedChange={onAutoplayChange}
+            />
           </div>
         )}
 
