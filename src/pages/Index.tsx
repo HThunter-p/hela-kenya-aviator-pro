@@ -10,6 +10,7 @@ import { useProfile } from '@/hooks/useProfile';
 import { useAdmin } from '@/hooks/useAdmin';
 import { AdminPanel } from '@/components/AdminPanel';
 import { AdminWithdrawals } from '@/components/AdminWithdrawals';
+import { LiveBettingActivity } from '@/components/LiveBettingActivity';
 import Navigation from '@/components/Navigation';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -39,6 +40,7 @@ const Index = () => {
   const [canCashOut, setCanCashOut] = useState<{ [key: number]: boolean }>({ 1: false, 2: false, 3: false });
   const [autoplay, setAutoplay] = useState<{ [key: number]: boolean }>({ 1: false, 2: false, 3: false });
   const [autoCashoutMultiplier, setAutoCashoutMultiplier] = useState<{ [key: number]: number }>({ 1: 2.0, 2: 2.0, 3: 2.0 });
+  const [activeLiveBetIds, setActiveLiveBetIds] = useState<{ [key: number]: string | null }>({ 1: null, 2: null, 3: null });
 
   // Redirect to auth if not logged in
   useEffect(() => {
@@ -130,6 +132,18 @@ const Index = () => {
     
     if (activeBets.length > 0 && user) {
       for (const [panelId, betAmount] of activeBets) {
+        // Update live bet to lost
+        const liveBetId = activeLiveBetIds[Number(panelId)];
+        if (liveBetId) {
+          await supabase
+            .from('live_bets')
+            .update({
+              status: 'lost',
+              multiplier,
+            })
+            .eq('id', liveBetId);
+        }
+
         // Record lost bet
         await supabase.from('bet_history').insert({
           user_id: user.id,
@@ -159,6 +173,7 @@ const Index = () => {
       }
       
       setCurrentBets({ 1: 0, 2: 0, 3: 0 });
+      setActiveLiveBetIds({ 1: null, 2: null, 3: null });
       toast.error(`Crashed at ${multiplier.toFixed(2)}x! Better luck next time.`);
     }
 
@@ -210,6 +225,23 @@ const Index = () => {
       return;
     }
 
+    // Create live bet entry
+    const { data: liveBetData, error: liveBetError } = await supabase
+      .from('live_bets')
+      .insert({
+        user_id: user.id,
+        amount,
+        status: 'active',
+      })
+      .select()
+      .single();
+
+    if (liveBetError) {
+      console.error('Error creating live bet:', liveBetError);
+    } else if (liveBetData) {
+      setActiveLiveBetIds(prev => ({ ...prev, [panelId]: liveBetData.id }));
+    }
+
     setCurrentBets(prev => ({ ...prev, [panelId]: amount }));
     setCanCashOut(prev => ({ ...prev, [panelId]: true }));
     refetchProfile();
@@ -233,6 +265,21 @@ const Index = () => {
       toast.error('Failed to cash out');
       console.error('Error cashing out:', updateError);
       return;
+    }
+
+    // Update live bet
+    const liveBetId = activeLiveBetIds[panelId];
+    if (liveBetId) {
+      await supabase
+        .from('live_bets')
+        .update({
+          status: 'cashed_out',
+          multiplier,
+          payout,
+        })
+        .eq('id', liveBetId);
+      
+      setActiveLiveBetIds(prev => ({ ...prev, [panelId]: null }));
     }
 
     // Record winning bet
@@ -381,6 +428,9 @@ const Index = () => {
               <AdminWithdrawals />
             </>
           )}
+
+          {/* Live Betting Activity */}
+          <LiveBettingActivity />
 
           {/* Game Display */}
           <MultiplierDisplay

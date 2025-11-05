@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Home, Wallet, Users } from 'lucide-react';
+import { Home, Wallet, Users, MessageCircle } from 'lucide-react';
 
 export default function Navigation() {
   const location = useLocation();
@@ -29,6 +29,17 @@ export default function Navigation() {
           >
             <Wallet className="h-5 w-5" />
             <span className="text-xs">Withdraw</span>
+          </Button>
+        </Link>
+        
+        <Link to="/chat">
+          <Button
+            variant={isActive('/chat') ? 'default' : 'ghost'}
+            size="lg"
+            className="flex flex-col items-center gap-1 h-auto py-3"
+          >
+            <MessageCircle className="h-5 w-5" />
+            <span className="text-xs">Chat</span>
           </Button>
         </Link>
         
