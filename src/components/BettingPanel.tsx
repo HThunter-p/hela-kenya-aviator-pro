@@ -15,6 +15,8 @@ interface BettingPanelProps {
   currentBet: number;
   autoplay?: boolean;
   onAutoplayChange?: (enabled: boolean) => void;
+  autoCashoutMultiplier?: number;
+  onAutoCashoutChange?: (multiplier: number) => void;
 }
 
 export const BettingPanel = ({
@@ -26,6 +28,8 @@ export const BettingPanel = ({
   currentBet,
   autoplay = false,
   onAutoplayChange,
+  autoCashoutMultiplier = 2.0,
+  onAutoCashoutChange,
 }: BettingPanelProps) => {
   const [betAmount, setBetAmount] = useState(100);
 
@@ -48,16 +52,39 @@ export const BettingPanel = ({
         )}
 
         {onAutoplayChange && (
-          <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-            <div className="flex items-center gap-2">
-              <Zap className="h-4 w-4 text-primary" />
-              <Label htmlFor="autoplay" className="cursor-pointer">Autoplay</Label>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+              <div className="flex items-center gap-2">
+                <Zap className="h-4 w-4 text-primary" />
+                <Label htmlFor="autoplay" className="cursor-pointer">Autoplay</Label>
+              </div>
+              <Switch
+                id="autoplay"
+                checked={autoplay}
+                onCheckedChange={onAutoplayChange}
+              />
             </div>
-            <Switch
-              id="autoplay"
-              checked={autoplay}
-              onCheckedChange={onAutoplayChange}
-            />
+
+            {autoplay && onAutoCashoutChange && (
+              <div className="p-3 bg-primary/10 rounded-lg border border-primary/20">
+                <Label className="text-sm mb-2 block">Auto Cash-Out at</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    value={autoCashoutMultiplier}
+                    onChange={(e) => onAutoCashoutChange(parseFloat(e.target.value) || 1.5)}
+                    step="0.1"
+                    min="1.1"
+                    max="100"
+                    className="text-center font-bold"
+                  />
+                  <span className="text-sm font-medium">x</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Automatically cash out when multiplier reaches this value
+                </p>
+              </div>
+            )}
           </div>
         )}
 

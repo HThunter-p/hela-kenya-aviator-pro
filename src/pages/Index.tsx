@@ -38,6 +38,7 @@ const Index = () => {
   const [canBet, setCanBet] = useState(true);
   const [canCashOut, setCanCashOut] = useState<{ [key: number]: boolean }>({ 1: false, 2: false, 3: false });
   const [autoplay, setAutoplay] = useState<{ [key: number]: boolean }>({ 1: false, 2: false, 3: false });
+  const [autoCashoutMultiplier, setAutoCashoutMultiplier] = useState<{ [key: number]: number }>({ 1: 2.0, 2: 2.0, 3: 2.0 });
 
   // Redirect to auth if not logged in
   useEffect(() => {
@@ -89,6 +90,16 @@ const Index = () => {
         const increment = Math.random() * 0.1 + 0.05;
         const newMultiplier = prev + increment;
 
+        // Check for auto cash-out on autoplay panels
+        Object.entries(autoplay).forEach(([panelId, enabled]) => {
+          const id = Number(panelId);
+          if (enabled && canCashOut[id] && currentBets[id] > 0) {
+            if (newMultiplier >= autoCashoutMultiplier[id]) {
+              handleCashOut(id);
+            }
+          }
+        });
+
         // Highly unpredictable crash probability with multiple random factors
         const baseProb = 0.015;
         const multiplierFactor = Math.pow(newMultiplier, 1.5) / 1000;
@@ -107,7 +118,7 @@ const Index = () => {
     }, 100);
 
     return () => clearInterval(interval);
-  }, [isFlying]);
+  }, [isFlying, autoplay, canCashOut, currentBets, autoCashoutMultiplier]);
 
   const handleCrash = useCallback(async () => {
     setIsFlying(false);
@@ -391,6 +402,8 @@ const Index = () => {
                 currentBet={currentBets[panelId]}
                 autoplay={autoplay[panelId]}
                 onAutoplayChange={(enabled) => setAutoplay(prev => ({ ...prev, [panelId]: enabled }))}
+                autoCashoutMultiplier={autoCashoutMultiplier[panelId]}
+                onAutoCashoutChange={(multiplier) => setAutoCashoutMultiplier(prev => ({ ...prev, [panelId]: multiplier }))}
               />
             ))}
           </div>
