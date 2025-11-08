@@ -99,47 +99,33 @@ export default function Withdrawal() {
         return;
       }
 
-      // Insert withdrawal request
-      const { error: withdrawalError } = await supabase
-        .from('withdrawals')
-        .insert({
-          user_id: user.id,
+      // Call M-Pesa withdrawal edge function
+      const { data, error } = await supabase.functions.invoke('mpesa-withdrawal', {
+        body: {
           amount: withdrawalData.amount,
-          phone_number: withdrawalData.phoneNumber,
-          status: 'pending',
-        });
-
-      if (withdrawalError) throw withdrawalError;
-
-      // Update profile balance
-      const { error: balanceError } = await supabase
-        .from('profiles')
-        .update({ balance: profile.balance - withdrawalData.amount })
-        .eq('id', user.id);
-
-      if (balanceError) throw balanceError;
-
-      // Insert transaction record
-      await supabase.from('transactions').insert({
-        user_id: user.id,
-        type: 'withdrawal',
-        amount: -withdrawalData.amount,
-        status: 'completed',
-        description: `Withdrawal to ${withdrawalData.phoneNumber}`,
+          phoneNumber: withdrawalData.phoneNumber,
+          userId: user.id,
+        },
       });
 
-      toast.success('Withdrawal request submitted successfully');
-      setAmount('');
-      refetch();
-      
-      // Refresh withdrawals list
-      const { data } = await supabase
-        .from('withdrawals')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-      
-      if (data) setWithdrawals(data);
+      if (error) throw error;
+
+      if (data.success) {
+        toast.success(data.message || 'Withdrawal request submitted successfully');
+        setAmount('');
+        refetch();
+        
+        // Refresh withdrawals list
+        const { data: withdrawalsData } = await supabase
+          .from('withdrawals')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+        
+        if (withdrawalsData) setWithdrawals(withdrawalsData);
+      } else {
+        throw new Error(data.error || 'Failed to process withdrawal');
+      }
     } catch (error: any) {
       if (error instanceof z.ZodError) {
         toast.error(error.errors[0].message);

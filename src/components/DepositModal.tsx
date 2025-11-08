@@ -22,6 +22,7 @@ interface DepositModalProps {
 export const DepositModal = ({ userId, onDepositSuccess }: DepositModalProps) => {
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [loading, setLoading] = useState(false);
 
   const quickAmounts = [100, 500, 1000, 5000];
@@ -40,80 +41,34 @@ export const DepositModal = ({ userId, onDepositSuccess }: DepositModalProps) =>
       return;
     }
 
+    if (!phoneNumber) {
+      toast.error('Please enter your M-Pesa phone number');
+      return;
+    }
+
     setLoading(true);
 
     try {
-      // Get current profile with referrer info
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('balance, first_deposit_made, referrer_id')
-        .eq('id', userId)
-        .single();
-
-      if (profileError) throw profileError;
-
-      const newBalance = parseFloat(profile.balance.toString()) + depositAmount;
-      const isFirstDeposit = !profile.first_deposit_made;
-
-      // Update balance and first deposit flag
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ 
-          balance: newBalance,
-          first_deposit_made: true 
-        })
-        .eq('id', userId);
-
-      if (updateError) throw updateError;
-
-      // Record transaction
-      const { error: transactionError } = await supabase
-        .from('transactions')
-        .insert({
-          user_id: userId,
+      // Call M-Pesa deposit edge function
+      const { data, error } = await supabase.functions.invoke('mpesa-deposit', {
+        body: {
           amount: depositAmount,
-          type: 'deposit',
-          description: 'Deposit to account',
-        });
+          phoneNumber: phoneNumber,
+          userId: userId,
+        },
+      });
 
-      if (transactionError) throw transactionError;
+      if (error) throw error;
 
-      // Handle referral bonus (10% of first deposit)
-      if (isFirstDeposit && profile.referrer_id) {
-        const bonusAmount = depositAmount * 0.1;
-        
-        // Get referrer's current balance
-        const { data: referrerProfile } = await supabase
-          .from('profiles')
-          .select('balance')
-          .eq('id', profile.referrer_id)
-          .single();
-
-        if (referrerProfile) {
-          const referrerNewBalance = parseFloat(referrerProfile.balance.toString()) + bonusAmount;
-          
-          // Update referrer's balance
-          await supabase
-            .from('profiles')
-            .update({ balance: referrerNewBalance })
-            .eq('id', profile.referrer_id);
-
-          // Record referral bonus transaction
-          await supabase
-            .from('transactions')
-            .insert({
-              user_id: profile.referrer_id,
-              amount: bonusAmount,
-              type: 'deposit',
-              description: `Referral bonus (10% of KSh ${depositAmount.toLocaleString()})`,
-            });
-        }
+      if (data.success) {
+        toast.success(data.message || 'STK Push sent successfully. Please check your phone.');
+        setAmount('');
+        setPhoneNumber('');
+        setOpen(false);
+        onDepositSuccess();
+      } else {
+        throw new Error(data.error || 'Failed to initiate deposit');
       }
-
-      toast.success(`Successfully deposited KSh ${depositAmount.toLocaleString()}!`);
-      setAmount('');
-      setOpen(false);
-      onDepositSuccess();
     } catch (error: any) {
       toast.error(error.message || 'Failed to process deposit');
     } finally {
@@ -151,6 +106,18 @@ export const DepositModal = ({ userId, onDepositSuccess }: DepositModalProps) =>
           </div>
 
           <div className="space-y-2">
+            <Label htmlFor="phoneNumber">M-Pesa Phone Number</Label>
+            <Input
+              id="phoneNumber"
+              type="tel"
+              placeholder="+254712345678 or 0712345678"
+              value={phoneNumber}
+              onChange={(e) => setPhoneNumber(e.target.value)}
+              className="text-lg"
+            />
+          </div>
+
+          <div className="space-y-2">
             <Label>Quick Select</Label>
             <div className="grid grid-cols-2 gap-2">
               {quickAmounts.map((amt) => (
@@ -176,7 +143,7 @@ export const DepositModal = ({ userId, onDepositSuccess }: DepositModalProps) =>
           </Button>
 
           <p className="text-xs text-muted-foreground text-center">
-            This is demo mode. No real money is being deposited.
+            You will receive an M-Pesa STK push on your phone to complete the deposit.
           </p>
         </div>
       </DialogContent>
