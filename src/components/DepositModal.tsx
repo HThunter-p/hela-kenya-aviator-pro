@@ -22,7 +22,6 @@ interface DepositModalProps {
 export const DepositModal = ({ userId, onDepositSuccess }: DepositModalProps) => {
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('');
   const [loading, setLoading] = useState(false);
 
   const quickAmounts = [100, 500, 1000, 5000];
@@ -41,34 +40,40 @@ export const DepositModal = ({ userId, onDepositSuccess }: DepositModalProps) =>
       return;
     }
 
-    if (!phoneNumber) {
-      toast.error('Please enter your M-Pesa phone number');
-      return;
-    }
-
     setLoading(true);
 
     try {
-      // Call M-Pesa deposit edge function
-      const { data, error } = await supabase.functions.invoke('mpesa-deposit', {
-        body: {
+      // Create transaction record
+      const { error } = await supabase
+        .from('transactions')
+        .insert({
+          user_id: userId,
+          type: 'deposit',
           amount: depositAmount,
-          phoneNumber: phoneNumber,
-          userId: userId,
-        },
-      });
+          status: 'completed',
+          description: 'Manual deposit',
+        });
 
       if (error) throw error;
 
-      if (data.success) {
-        toast.success(data.message || 'STK Push sent successfully. Please check your phone.');
-        setAmount('');
-        setPhoneNumber('');
-        setOpen(false);
-        onDepositSuccess();
-      } else {
-        throw new Error(data.error || 'Failed to initiate deposit');
+      // Update user balance
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('balance')
+        .eq('id', userId)
+        .single();
+
+      if (profile) {
+        await supabase
+          .from('profiles')
+          .update({ balance: Number(profile.balance) + depositAmount })
+          .eq('id', userId);
       }
+
+      toast.success('Deposit successful!');
+      setAmount('');
+      setOpen(false);
+      onDepositSuccess();
     } catch (error: any) {
       toast.error(error.message || 'Failed to process deposit');
     } finally {
@@ -106,18 +111,6 @@ export const DepositModal = ({ userId, onDepositSuccess }: DepositModalProps) =>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="phoneNumber">M-Pesa Phone Number</Label>
-            <Input
-              id="phoneNumber"
-              type="tel"
-              placeholder="+254712345678 or 0712345678"
-              value={phoneNumber}
-              onChange={(e) => setPhoneNumber(e.target.value)}
-              className="text-lg"
-            />
-          </div>
-
-          <div className="space-y-2">
             <Label>Quick Select</Label>
             <div className="grid grid-cols-2 gap-2">
               {quickAmounts.map((amt) => (
@@ -141,10 +134,6 @@ export const DepositModal = ({ userId, onDepositSuccess }: DepositModalProps) =>
           >
             {loading ? 'Processing...' : 'Confirm Deposit'}
           </Button>
-
-          <p className="text-xs text-muted-foreground text-center">
-            You will receive an M-Pesa STK push on your phone to complete the deposit.
-          </p>
         </div>
       </DialogContent>
     </Dialog>

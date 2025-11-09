@@ -99,33 +99,41 @@ export default function Withdrawal() {
         return;
       }
 
-      // Call M-Pesa withdrawal edge function
-      const { data, error } = await supabase.functions.invoke('mpesa-withdrawal', {
-        body: {
+      // Create withdrawal record
+      const { error } = await supabase
+        .from('withdrawals')
+        .insert({
+          user_id: user.id,
           amount: withdrawalData.amount,
-          phoneNumber: withdrawalData.phoneNumber,
-          userId: user.id,
-        },
-      });
+          phone_number: withdrawalData.phoneNumber,
+          status: 'pending',
+        });
 
       if (error) throw error;
 
-      if (data.success) {
-        toast.success(data.message || 'Withdrawal request submitted successfully');
-        setAmount('');
-        refetch();
-        
-        // Refresh withdrawals list
-        const { data: withdrawalsData } = await supabase
-          .from('withdrawals')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false });
-        
-        if (withdrawalsData) setWithdrawals(withdrawalsData);
-      } else {
-        throw new Error(data.error || 'Failed to process withdrawal');
-      }
+      // Create transaction record
+      await supabase
+        .from('transactions')
+        .insert({
+          user_id: user.id,
+          type: 'withdrawal',
+          amount: withdrawalData.amount,
+          status: 'pending',
+          description: 'Withdrawal request',
+        });
+
+      toast.success('Withdrawal request submitted successfully');
+      setAmount('');
+      refetch();
+      
+      // Refresh withdrawals list
+      const { data: withdrawalsData } = await supabase
+        .from('withdrawals')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+      
+      if (withdrawalsData) setWithdrawals(withdrawalsData);
     } catch (error: any) {
       if (error instanceof z.ZodError) {
         toast.error(error.errors[0].message);
