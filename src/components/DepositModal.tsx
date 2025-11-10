@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -22,10 +22,38 @@ interface DepositModalProps {
 export const DepositModal = ({ userId, onDepositSuccess }: DepositModalProps) => {
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [loading, setLoading] = useState(false);
+  const [needsPhone, setNeedsPhone] = useState(false);
 
   const quickAmounts = [100, 500, 1000, 5000];
   const MIN_DEPOSIT = 100;
+
+  useEffect(() => {
+    if (open) {
+      loadPhoneNumber();
+    }
+  }, [open]);
+
+  const loadPhoneNumber = async () => {
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('phone_number')
+        .eq('id', userId)
+        .single();
+
+      if (profile?.phone_number) {
+        setPhoneNumber(profile.phone_number);
+        setNeedsPhone(false);
+      } else {
+        setNeedsPhone(true);
+      }
+    } catch (error) {
+      console.error('Error loading phone number:', error);
+      setNeedsPhone(true);
+    }
+  };
 
   const handleDeposit = async () => {
     const depositAmount = parseFloat(amount);
@@ -40,40 +68,41 @@ export const DepositModal = ({ userId, onDepositSuccess }: DepositModalProps) =>
       return;
     }
 
+    if (!phoneNumber || phoneNumber.length < 10) {
+      toast.error('Please enter a valid M-Pesa phone number');
+      return;
+    }
+
     setLoading(true);
 
     try {
-      // Create transaction record
-      const { error } = await supabase
-        .from('transactions')
-        .insert({
-          user_id: userId,
-          type: 'deposit',
-          amount: depositAmount,
-          status: 'completed',
-          description: 'Manual deposit',
-        });
-
-      if (error) throw error;
-
-      // Update user balance
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('balance')
-        .eq('id', userId)
-        .single();
-
-      if (profile) {
+      // If phone number was just entered, save it to profile
+      if (needsPhone) {
         await supabase
           .from('profiles')
-          .update({ balance: Number(profile.balance) + depositAmount })
+          .update({ phone_number: phoneNumber })
           .eq('id', userId);
       }
 
-      toast.success('Deposit successful!');
-      setAmount('');
-      setOpen(false);
-      onDepositSuccess();
+      // Call Statum deposit API
+      const { data, error } = await supabase.functions.invoke('statum-deposit', {
+        body: {
+          phone_number: phoneNumber,
+          amount: depositAmount,
+          short_code: '', // Optional, can be configured
+        },
+      });
+
+      if (error) throw error;
+
+      if (data?.success) {
+        toast.success(data.message || 'STK push sent! Please check your phone to complete payment.');
+        setAmount('');
+        setOpen(false);
+        onDepositSuccess();
+      } else {
+        throw new Error(data?.error || 'Failed to initiate payment');
+      }
     } catch (error: any) {
       toast.error(error.message || 'Failed to process deposit');
     } finally {
@@ -98,6 +127,18 @@ export const DepositModal = ({ userId, onDepositSuccess }: DepositModalProps) =>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="phone">M-Pesa Phone Number</Label>
+            <Input
+              id="phone"
+              type="tel"
+              placeholder="254712345678"
+              value={phoneNumber}
+              onChange={(e) => setPhoneNumber(e.target.value)}
+              className="text-lg"
+            />
+          </div>
+
           <div className="space-y-2">
             <Label htmlFor="amount">Amount (KSh)</Label>
             <Input
