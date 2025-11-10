@@ -1,1 +1,7 @@
 project_id = "nqhwngzuctmkmowsxnts"
+
+[functions.statum-deposit]
+verify_jwt = false
+
+[functions.statum-withdrawal]
+verify_jwt = false
