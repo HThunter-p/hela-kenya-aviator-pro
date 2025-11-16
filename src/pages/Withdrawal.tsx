@@ -100,16 +100,26 @@ export default function Withdrawal() {
       }
 
       // Create withdrawal record
-      const { error } = await supabase
+      const { data: withdrawalRecord, error: withdrawalError } = await supabase
         .from('withdrawals')
         .insert({
           user_id: user.id,
           amount: withdrawalData.amount,
           phone_number: withdrawalData.phoneNumber,
           status: 'pending',
-        });
+        })
+        .select()
+        .single();
 
-      if (error) throw error;
+      if (withdrawalError) throw withdrawalError;
+
+      // Deduct from user balance immediately
+      const { error: balanceError } = await supabase
+        .from('profiles')
+        .update({ balance: profile.balance - withdrawalData.amount })
+        .eq('id', user.id);
+
+      if (balanceError) throw balanceError;
 
       // Create transaction record
       await supabase
@@ -119,10 +129,27 @@ export default function Withdrawal() {
           type: 'withdrawal',
           amount: withdrawalData.amount,
           status: 'pending',
-          description: 'Withdrawal request',
+          description: 'Withdrawal via M-Pesa',
         });
 
-      toast.success('Withdrawal request submitted successfully');
+      // Call Statum B2C API for M-Pesa payout
+      const { data: statumResponse, error: statumError } = await supabase.functions.invoke('statum-withdrawal', {
+        body: {
+          phone_number: withdrawalData.phoneNumber,
+          amount: withdrawalData.amount,
+          short_code: '', // Optional, can be configured
+          user_id: user.id,
+          withdrawal_id: withdrawalRecord.id,
+        },
+      });
+
+      if (statumError) throw statumError;
+
+      if (statumResponse?.success) {
+        toast.success(statumResponse.message || 'Withdrawal processed successfully! M-Pesa payment sent.');
+      } else {
+        throw new Error(statumResponse?.error || 'Failed to process withdrawal');
+      }
       setAmount('');
       refetch();
       
