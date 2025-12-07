@@ -25,6 +25,24 @@ serve(async (req) => {
       );
     }
 
+    // Validate amount is a positive number within limits
+    const numericAmount = parseFloat(amount);
+    if (isNaN(numericAmount) || numericAmount < 50 || numericAmount > 70000) {
+      return new Response(
+        JSON.stringify({ error: 'Amount must be between 50 and 70,000 KSh' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate phone number format (Kenyan format)
+    const phoneRegex = /^(?:254|\+254|0)?[17]\d{8}$/;
+    if (!phoneRegex.test(phone_number.replace(/\s/g, ''))) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid phone number format' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Initialize Supabase client
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
