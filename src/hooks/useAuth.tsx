@@ -17,10 +17,20 @@ export const useAuth = () => {
       }
     );
 
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // THEN check for existing session with error handling
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) {
+        // Handle invalid refresh token by clearing stale session
+        console.error('Session error:', error.message);
+        if (error.message?.includes('Refresh Token') || error.code === 'refresh_token_not_found') {
+          supabase.auth.signOut();
+        }
+      }
       setSession(session);
       setUser(session?.user ?? null);
+      setLoading(false);
+    }).catch((error) => {
+      console.error('Failed to get session:', error);
       setLoading(false);
     });
 

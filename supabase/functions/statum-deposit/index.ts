@@ -24,6 +24,24 @@ serve(async (req) => {
       );
     }
 
+    // Validate amount is a positive number within limits
+    const numericAmount = parseFloat(amount);
+    if (isNaN(numericAmount) || numericAmount < 10 || numericAmount > 150000) {
+      return new Response(
+        JSON.stringify({ error: 'Amount must be between 10 and 150,000 KSh' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate phone number format (Kenyan format)
+    const phoneRegex = /^(?:254|\+254|0)?[17]\d{8}$/;
+    if (!phoneRegex.test(phone_number.replace(/\s/g, ''))) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid phone number format' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Get Statum credentials from environment
     const consumerKey = Deno.env.get('STUTUM_CONSUMER_KEY');
     const consumerSecret = Deno.env.get('STUTUM_SECRET_KEY');
