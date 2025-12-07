@@ -12,9 +12,9 @@ serve(async (req) => {
   }
 
   try {
-    const { phone_number, amount, short_code } = await req.json();
+    const { phone_number, amount } = await req.json();
 
-    console.log('Initiating Statum deposit:', { phone_number, amount, short_code });
+    console.log('Initiating Lipana STK push:', { phone_number, amount });
 
     // Validate inputs
     if (!phone_number || !amount) {
@@ -42,63 +42,67 @@ serve(async (req) => {
       );
     }
 
-    // Get Statum credentials from environment
-    const consumerKey = Deno.env.get('STUTUM_CONSUMER_KEY');
-    const consumerSecret = Deno.env.get('STUTUM_SECRET_KEY');
+    // Format phone number to international format
+    let formattedPhone = phone_number.replace(/\s/g, '');
+    if (formattedPhone.startsWith('0')) {
+      formattedPhone = '+254' + formattedPhone.substring(1);
+    } else if (formattedPhone.startsWith('254')) {
+      formattedPhone = '+' + formattedPhone;
+    } else if (!formattedPhone.startsWith('+')) {
+      formattedPhone = '+' + formattedPhone;
+    }
 
-    if (!consumerKey || !consumerSecret) {
-      console.error('Missing Statum credentials');
+    // Get Lipana API key from environment
+    const lipanaSecretKey = Deno.env.get('LIPANA_SECRET_KEY');
+
+    if (!lipanaSecretKey) {
+      console.error('Missing Lipana API key');
       return new Response(
         JSON.stringify({ error: 'Payment service configuration error' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Create Basic Auth header
-    const credentials = btoa(`${consumerKey}:${consumerSecret}`);
-    const authHeader = `Basic ${credentials}`;
+    console.log('Making request to Lipana STK Push API...');
 
-    console.log('Making request to Statum API...');
-
-    // Make request to Statum STK Push API
-    const statumResponse = await fetch('https://api.statum.co.ke/api/v2/mpesa-online', {
+    // Make request to Lipana STK Push API
+    const lipanaResponse = await fetch('https://api.lipana.dev/v1/transactions/push-stk', {
       method: 'POST',
       headers: {
-        'Authorization': authHeader,
+        'x-api-key': lipanaSecretKey,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        phone_number: phone_number,
-        amount: amount.toString(),
-        short_code: short_code || '',
+        phone: formattedPhone,
+        amount: Math.round(numericAmount),
       }),
     });
 
-    const responseData = await statumResponse.json();
-    console.log('Statum API response:', responseData);
+    const responseData = await lipanaResponse.json();
+    console.log('Lipana API response:', responseData);
 
-    if (!statumResponse.ok) {
-      console.error('Statum API error:', responseData);
+    if (!lipanaResponse.ok || !responseData.success) {
+      console.error('Lipana API error:', responseData);
       return new Response(
         JSON.stringify({ 
           error: 'Payment initiation failed', 
-          details: responseData 
+          details: responseData.message || responseData 
         }),
-        { status: statumResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: lipanaResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     return new Response(
       JSON.stringify({
         success: true,
-        data: responseData,
-        message: 'Payment request sent. Please check your phone to complete the payment.'
+        data: responseData.data,
+        message: responseData.data?.message || 'STK push sent to your phone. Please complete the payment.'
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
-    console.error('Error in statum-deposit function:', error);
+    console.error('Error in lipana-deposit function:', error);
     const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
     return new Response(
       JSON.stringify({ error: errorMessage }),
