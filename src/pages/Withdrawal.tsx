@@ -7,7 +7,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Wallet } from 'lucide-react';
+import { ArrowLeft, Wallet, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
@@ -26,7 +26,7 @@ interface Withdrawal {
 
 export default function Withdrawal() {
   const { user, loading: authLoading } = useAuth();
-  const { profile, loading: profileLoading, refetch } = useProfile(user?.id);
+  const { profile, loading: profileLoading, refetch: refetchProfile } = useProfile(user?.id);
   const navigate = useNavigate();
   const [amount, setAmount] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -46,27 +46,27 @@ export default function Withdrawal() {
     }
   }, [profile]);
 
+  const fetchWithdrawals = async () => {
+    if (!user?.id) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('withdrawals')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setWithdrawals(data || []);
+    } catch (error) {
+      console.error('Error fetching withdrawals:', error);
+      toast.error('Failed to load withdrawal history');
+    } finally {
+      setLoadingWithdrawals(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchWithdrawals = async () => {
-      if (!user?.id) return;
-
-      try {
-        const { data, error } = await supabase
-          .from('withdrawals')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false });
-
-        if (error) throw error;
-        setWithdrawals(data || []);
-      } catch (error) {
-        console.error('Error fetching withdrawals:', error);
-        toast.error('Failed to load withdrawal history');
-      } finally {
-        setLoadingWithdrawals(false);
-      }
-    };
-
     fetchWithdrawals();
   }, [user?.id]);
 
@@ -99,74 +99,47 @@ export default function Withdrawal() {
         return;
       }
 
-      // Create withdrawal record
-      const { data: withdrawalRecord, error: withdrawalError } = await supabase
+      // Use atomic balance deduction to prevent race conditions
+      const { data: updateResult, error: balanceError } = await supabase
+        .rpc('deduct_balance_atomic', {
+          p_user_id: user.id,
+          p_amount: withdrawalData.amount
+        });
+
+      if (balanceError || !updateResult) {
+        throw new Error('Insufficient balance or failed to deduct');
+      }
+
+      // Create withdrawal request (pending admin approval)
+      const { error: withdrawalError } = await supabase
         .from('withdrawals')
         .insert({
           user_id: user.id,
           amount: withdrawalData.amount,
           phone_number: withdrawalData.phoneNumber,
           status: 'pending',
-        })
-        .select()
-        .single();
+        });
 
       if (withdrawalError) throw withdrawalError;
 
-      // Deduct from user balance immediately
-      const { error: balanceError } = await supabase
-        .from('profiles')
-        .update({ balance: profile.balance - withdrawalData.amount })
-        .eq('id', user.id);
-
-      if (balanceError) throw balanceError;
-
-      // Create transaction record
-      await supabase
-        .from('transactions')
-        .insert({
-          user_id: user.id,
-          type: 'withdrawal',
-          amount: withdrawalData.amount,
-          status: 'pending',
-          description: 'Withdrawal via M-Pesa',
-        });
-
-      // Call Statum B2C API for M-Pesa payout
-      const { data: statumResponse, error: statumError } = await supabase.functions.invoke('statum-withdrawal', {
-        body: {
-          phone_number: withdrawalData.phoneNumber,
-          amount: withdrawalData.amount,
-          short_code: '', // Optional, can be configured
-          user_id: user.id,
-          withdrawal_id: withdrawalRecord.id,
-        },
+      // Record transaction
+      await supabase.from('transactions').insert({
+        user_id: user.id,
+        amount: -withdrawalData.amount,
+        type: 'withdrawal',
+        description: `Withdrawal request to ${withdrawalData.phoneNumber} (pending approval)`,
       });
 
-      if (statumError) throw statumError;
-
-      if (statumResponse?.success) {
-        toast.success(statumResponse.message || 'Withdrawal processed successfully! M-Pesa payment sent.');
-      } else {
-        throw new Error(statumResponse?.error || 'Failed to process withdrawal');
-      }
+      toast.success('Withdrawal request submitted! Admin will review and process it manually.');
       setAmount('');
-      refetch();
-      
-      // Refresh withdrawals list
-      const { data: withdrawalsData } = await supabase
-        .from('withdrawals')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-      
-      if (withdrawalsData) setWithdrawals(withdrawalsData);
+      refetchProfile();
+      fetchWithdrawals();
     } catch (error: any) {
       if (error instanceof z.ZodError) {
         toast.error(error.errors[0].message);
       } else {
         console.error('Withdrawal error:', error);
-        toast.error('Failed to process withdrawal');
+        toast.error(error.message || 'Failed to process withdrawal');
       }
     } finally {
       setLoading(false);
@@ -212,6 +185,18 @@ export default function Withdrawal() {
             <h1 className="text-3xl font-bold">Withdraw Funds</h1>
           </div>
 
+          <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 mb-6">
+            <div className="flex items-start gap-2">
+              <Clock className="h-5 w-5 text-primary mt-0.5" />
+              <div>
+                <p className="font-medium text-primary">Admin Approval Required</p>
+                <p className="text-sm text-muted-foreground">
+                  Withdrawals are manually processed by admin. Your request will be reviewed and M-Pesa payment will be sent within 24 hours.
+                </p>
+              </div>
+            </div>
+          </div>
+
           <div className="bg-muted/50 rounded-lg p-4 mb-6">
             <p className="text-sm text-muted-foreground mb-1">Available Balance</p>
             <p className="text-3xl font-bold">KSh {profile?.balance.toLocaleString() || '0'}</p>
@@ -245,7 +230,7 @@ export default function Withdrawal() {
             </div>
 
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? 'Processing...' : 'Withdraw'}
+              {loading ? 'Submitting Request...' : 'Submit Withdrawal Request'}
             </Button>
           </form>
         </Card>
@@ -274,7 +259,7 @@ export default function Withdrawal() {
                   </div>
                   <div className="text-right">
                     <p className={`text-sm font-medium capitalize ${getStatusColor(withdrawal.status)}`}>
-                      {withdrawal.status}
+                      {withdrawal.status === 'pending' ? 'Awaiting Approval' : withdrawal.status}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {new Date(withdrawal.created_at).toLocaleDateString()}

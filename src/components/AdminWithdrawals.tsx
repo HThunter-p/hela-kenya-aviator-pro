@@ -61,7 +61,7 @@ export const AdminWithdrawals = () => {
     fetchWithdrawals();
   }, []);
 
-  const handleApprove = async (withdrawalId: string, userId: string) => {
+  const handleApprove = async (withdrawalId: string, userId: string, phoneNumber: string, amount: number) => {
     try {
       const { error } = await supabase
         .from('withdrawals')
@@ -73,7 +73,10 @@ export const AdminWithdrawals = () => {
 
       if (error) throw error;
 
-      toast.success('Withdrawal approved successfully');
+      toast.success(
+        `Withdrawal approved! Send KSh ${amount.toLocaleString()} to ${phoneNumber} via M-Pesa manually.`,
+        { duration: 10000 }
+      );
       fetchWithdrawals();
     } catch (error) {
       console.error('Error approving withdrawal:', error);
@@ -83,22 +86,14 @@ export const AdminWithdrawals = () => {
 
   const handleReject = async (withdrawalId: string, userId: string, amount: number) => {
     try {
-      // Get user's current balance
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('balance')
-        .eq('id', userId)
-        .single();
+      // Use atomic balance refund to prevent race conditions
+      const { error: refundError } = await supabase
+        .rpc('add_balance_atomic', {
+          p_user_id: userId,
+          p_amount: amount
+        });
 
-      if (!profile) throw new Error('Profile not found');
-
-      // Refund the amount
-      const newBalance = parseFloat(profile.balance.toString()) + amount;
-
-      await supabase
-        .from('profiles')
-        .update({ balance: newBalance })
-        .eq('id', userId);
+      if (refundError) throw refundError;
 
       // Update withdrawal status
       const { error } = await supabase
@@ -118,7 +113,7 @@ export const AdminWithdrawals = () => {
           user_id: userId,
           amount: amount,
           type: 'deposit',
-          description: 'Withdrawal refund (rejected)',
+          description: 'Withdrawal refund (rejected by admin)',
         });
 
       toast.success('Withdrawal rejected and amount refunded');
@@ -184,24 +179,29 @@ export const AdminWithdrawals = () => {
               </div>
 
               {withdrawal.status === 'pending' && (
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    onClick={() => handleApprove(withdrawal.id, withdrawal.user_id)}
-                    className="gap-1"
-                  >
-                    <CheckCircle className="h-4 w-4" />
-                    Approve
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={() => handleReject(withdrawal.id, withdrawal.user_id, withdrawal.amount)}
-                    className="gap-1"
-                  >
-                    <XCircle className="h-4 w-4" />
-                    Reject
-                  </Button>
+                <div className="flex flex-col gap-2">
+                  <p className="text-xs text-muted-foreground">
+                    After approving, manually send M-Pesa to: <strong>{withdrawal.phone_number}</strong>
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => handleApprove(withdrawal.id, withdrawal.user_id, withdrawal.phone_number, withdrawal.amount)}
+                      className="gap-1"
+                    >
+                      <CheckCircle className="h-4 w-4" />
+                      Approve & Mark Sent
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => handleReject(withdrawal.id, withdrawal.user_id, withdrawal.amount)}
+                      className="gap-1"
+                    >
+                      <XCircle className="h-4 w-4" />
+                      Reject
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>
