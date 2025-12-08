@@ -344,6 +344,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      add_balance_atomic: {
+        Args: { p_amount: number; p_user_id: string }
+        Returns: boolean
+      }
+      deduct_balance_atomic: {
+        Args: { p_amount: number; p_user_id: string }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

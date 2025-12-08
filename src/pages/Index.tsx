@@ -207,20 +207,15 @@ const Index = () => {
   const handleBet = async (panelId: number, amount: number) => {
     if (!profile || !user) return;
 
-    const balance = parseFloat(profile.balance.toString());
-    if (amount > balance) {
+    // Use atomic balance deduction to prevent race conditions
+    const { data: updateResult, error } = await supabase
+      .rpc('deduct_balance_atomic', {
+        p_user_id: user.id,
+        p_amount: amount
+      });
+
+    if (error || !updateResult) {
       toast.error('Insufficient balance!');
-      return;
-    }
-
-    // Deduct bet from balance
-    const { error } = await supabase
-      .from('profiles')
-      .update({ balance: balance - amount })
-      .eq('id', user.id);
-
-    if (error) {
-      toast.error('Failed to place bet');
       console.error('Error placing bet:', error);
       return;
     }
@@ -253,15 +248,15 @@ const Index = () => {
     if (currentBet === 0 || !user || !profile) return;
 
     const payout = Math.floor(currentBet * multiplier);
-    const balance = parseFloat(profile.balance.toString());
 
-    // Add winnings to balance
-    const { error: updateError } = await supabase
-      .from('profiles')
-      .update({ balance: balance + payout })
-      .eq('id', user.id);
+    // Use atomic balance addition to prevent race conditions
+    const { data: updateResult, error: updateError } = await supabase
+      .rpc('add_balance_atomic', {
+        p_user_id: user.id,
+        p_amount: payout
+      });
 
-    if (updateError) {
+    if (updateError || !updateResult) {
       toast.error('Failed to cash out');
       console.error('Error cashing out:', updateError);
       return;

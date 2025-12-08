@@ -12,6 +12,15 @@ serve(async (req) => {
   }
 
   try {
+    // JWT is now verified by Supabase (verify_jwt = true in config)
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Missing authorization header' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const { phone_number, amount } = await req.json();
 
     console.log('Initiating Lipana STK push:', { phone_number, amount });
