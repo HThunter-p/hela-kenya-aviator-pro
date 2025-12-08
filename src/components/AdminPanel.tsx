@@ -18,7 +18,7 @@ export const AdminPanel = () => {
         .from('future_rounds')
         .select('*')
         .order('round_number', { ascending: true })
-        .limit(5);
+        .limit(3);
 
       if (error) {
         console.error('Error loading future rounds:', error);
@@ -61,7 +61,7 @@ export const AdminPanel = () => {
         </div>
         <div>
           <h3 className="font-bold text-lg text-purple-300">Admin Panel</h3>
-          <p className="text-xs text-muted-foreground">Next 5 Rounds Preview</p>
+          <p className="text-xs text-muted-foreground">Next 3 Rounds Preview</p>
         </div>
       </div>
 
