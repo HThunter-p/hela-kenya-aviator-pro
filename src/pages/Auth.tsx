@@ -7,8 +7,9 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Plane } from 'lucide-react';
+import { Plane, Mail, Phone, Chrome } from 'lucide-react';
 import { z } from 'zod';
+import { Separator } from '@/components/ui/separator';
 
 const signUpSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -22,11 +23,17 @@ const signInSchema = z.object({
   password: z.string().min(6, 'Password must be at least 6 characters'),
 });
 
+const phoneSchema = z.string().regex(/^(?:\+254|0)[17]\d{8}$/, 'Invalid Kenyan phone number');
+
 const Auth = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [referralCode, setReferralCode] = useState<string | null>(null);
+  const [authMethod, setAuthMethod] = useState<'email' | 'phone'>('email');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [otp, setOtp] = useState('');
 
   const [signUpData, setSignUpData] = useState({
     email: '',
@@ -35,7 +42,6 @@ const Auth = () => {
     phoneNumber: '',
   });
 
-  // Check for referral code in URL
   useEffect(() => {
     const refCode = searchParams.get('ref');
     if (refCode) {
@@ -48,6 +54,111 @@ const Auth = () => {
     email: '',
     password: '',
   });
+
+  const formatPhoneNumber = (phone: string): string => {
+    if (phone.startsWith('0')) {
+      return '+254' + phone.slice(1);
+    }
+    return phone;
+  };
+
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/`,
+        },
+      });
+
+      if (error) {
+        toast.error(error.message);
+      }
+    } catch (error) {
+      toast.error('An error occurred during Google sign in');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePhoneOtpSend = async () => {
+    setLoading(true);
+    try {
+      phoneSchema.parse(phoneNumber);
+      const formattedPhone = formatPhoneNumber(phoneNumber);
+
+      const { error } = await supabase.auth.signInWithOtp({
+        phone: formattedPhone,
+      });
+
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+
+      setOtpSent(true);
+      toast.success('OTP sent to your phone!');
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        error.errors.forEach((err) => toast.error(err.message));
+      } else {
+        toast.error('An error occurred sending OTP');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePhoneOtpVerify = async () => {
+    setLoading(true);
+    try {
+      const formattedPhone = formatPhoneNumber(phoneNumber);
+
+      const { data, error } = await supabase.auth.verifyOtp({
+        phone: formattedPhone,
+        token: otp,
+        type: 'sms',
+      });
+
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+
+      if (data.user) {
+        // Handle referral for phone sign up
+        if (referralCode) {
+          const { data: referrerData } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('referral_code', referralCode)
+            .maybeSingle();
+
+          if (referrerData) {
+            await supabase
+              .from('profiles')
+              .update({ referrer_id: referrerData.id })
+              .eq('id', data.user.id);
+
+            await supabase
+              .from('referrals')
+              .insert({
+                referrer_id: referrerData.id,
+                referred_id: data.user.id,
+              });
+          }
+        }
+
+        toast.success('Welcome to HelaKenya!');
+        navigate('/');
+      }
+    } catch (error) {
+      toast.error('An error occurred verifying OTP');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,7 +189,6 @@ const Auth = () => {
       }
 
       if (data.user) {
-        // If there's a referral code, link it to the new user
         if (referralCode) {
           const { data: referrerData } = await supabase
             .from('profiles')
@@ -162,122 +272,230 @@ const Auth = () => {
           </div>
         </div>
 
-        <Tabs defaultValue="signin" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-6">
-            <TabsTrigger value="signin">Sign In</TabsTrigger>
-            <TabsTrigger value="signup">Sign Up</TabsTrigger>
-          </TabsList>
+        {/* Google Sign In Button */}
+        <Button
+          variant="outline"
+          className="w-full mb-4 gap-2"
+          onClick={handleGoogleSignIn}
+          disabled={loading}
+        >
+          <Chrome className="h-5 w-5" />
+          Continue with Google
+        </Button>
 
-          <TabsContent value="signin">
-            <form onSubmit={handleSignIn} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="signin-email">Email</Label>
-                <Input
-                  id="signin-email"
-                  type="email"
-                  placeholder="your@email.com"
-                  value={signInData.email}
-                  onChange={(e) =>
-                    setSignInData({ ...signInData, email: e.target.value })
-                  }
-                  required
-                />
-              </div>
+        <div className="relative my-4">
+          <Separator />
+          <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">
+            or continue with
+          </span>
+        </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="signin-password">Password</Label>
-                <Input
-                  id="signin-password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={signInData.password}
-                  onChange={(e) =>
-                    setSignInData({ ...signInData, password: e.target.value })
-                  }
-                  required
-                />
-              </div>
+        {/* Auth Method Toggle */}
+        <div className="flex gap-2 mb-4">
+          <Button
+            variant={authMethod === 'email' ? 'default' : 'outline'}
+            className="flex-1 gap-2"
+            onClick={() => {
+              setAuthMethod('email');
+              setOtpSent(false);
+            }}
+          >
+            <Mail className="h-4 w-4" />
+            Email
+          </Button>
+          <Button
+            variant={authMethod === 'phone' ? 'default' : 'outline'}
+            className="flex-1 gap-2"
+            onClick={() => {
+              setAuthMethod('phone');
+              setOtpSent(false);
+            }}
+          >
+            <Phone className="h-4 w-4" />
+            Phone
+          </Button>
+        </div>
 
-              <Button
-                type="submit"
-                variant="bet"
-                className="w-full"
-                disabled={loading}
-              >
-                {loading ? 'Signing in...' : 'Sign In'}
-              </Button>
-            </form>
-          </TabsContent>
+        {authMethod === 'phone' ? (
+          <div className="space-y-4">
+            {!otpSent ? (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone Number</Label>
+                  <Input
+                    id="phone"
+                    type="tel"
+                    placeholder="+254712345678 or 0712345678"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    required
+                  />
+                </div>
+                <Button
+                  variant="bet"
+                  className="w-full"
+                  onClick={handlePhoneOtpSend}
+                  disabled={loading}
+                >
+                  {loading ? 'Sending OTP...' : 'Send OTP'}
+                </Button>
+              </>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="otp">Enter OTP</Label>
+                  <Input
+                    id="otp"
+                    type="text"
+                    placeholder="123456"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value)}
+                    maxLength={6}
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    OTP sent to {phoneNumber}
+                  </p>
+                </div>
+                <Button
+                  variant="bet"
+                  className="w-full"
+                  onClick={handlePhoneOtpVerify}
+                  disabled={loading}
+                >
+                  {loading ? 'Verifying...' : 'Verify OTP'}
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="w-full"
+                  onClick={() => {
+                    setOtpSent(false);
+                    setOtp('');
+                  }}
+                >
+                  Change phone number
+                </Button>
+              </>
+            )}
+          </div>
+        ) : (
+          <Tabs defaultValue="signin" className="w-full">
+            <TabsList className="grid w-full grid-cols-2 mb-6">
+              <TabsTrigger value="signin">Sign In</TabsTrigger>
+              <TabsTrigger value="signup">Sign Up</TabsTrigger>
+            </TabsList>
 
-          <TabsContent value="signup">
-            <form onSubmit={handleSignUp} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="signup-name">Full Name</Label>
-                <Input
-                  id="signup-name"
-                  type="text"
-                  placeholder="John Doe"
-                  value={signUpData.fullName}
-                  onChange={(e) =>
-                    setSignUpData({ ...signUpData, fullName: e.target.value })
-                  }
-                  required
-                />
-              </div>
+            <TabsContent value="signin">
+              <form onSubmit={handleSignIn} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="signin-email">Email</Label>
+                  <Input
+                    id="signin-email"
+                    type="email"
+                    placeholder="your@email.com"
+                    value={signInData.email}
+                    onChange={(e) =>
+                      setSignInData({ ...signInData, email: e.target.value })
+                    }
+                    required
+                  />
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="signup-email">Email</Label>
-                <Input
-                  id="signup-email"
-                  type="email"
-                  placeholder="your@email.com"
-                  value={signUpData.email}
-                  onChange={(e) =>
-                    setSignUpData({ ...signUpData, email: e.target.value })
-                  }
-                  required
-                />
-              </div>
+                <div className="space-y-2">
+                  <Label htmlFor="signin-password">Password</Label>
+                  <Input
+                    id="signin-password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={signInData.password}
+                    onChange={(e) =>
+                      setSignInData({ ...signInData, password: e.target.value })
+                    }
+                    required
+                  />
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="signup-password">Password</Label>
-                <Input
-                  id="signup-password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={signUpData.password}
-                  onChange={(e) =>
-                    setSignUpData({ ...signUpData, password: e.target.value })
-                  }
-                  required
-                />
-              </div>
+                <Button
+                  type="submit"
+                  variant="bet"
+                  className="w-full"
+                  disabled={loading}
+                >
+                  {loading ? 'Signing in...' : 'Sign In'}
+                </Button>
+              </form>
+            </TabsContent>
 
-              <div className="space-y-2">
-                <Label htmlFor="signup-phone">Phone Number</Label>
-                <Input
-                  id="signup-phone"
-                  type="tel"
-                  placeholder="+254712345678 or 0712345678"
-                  value={signUpData.phoneNumber}
-                  onChange={(e) =>
-                    setSignUpData({ ...signUpData, phoneNumber: e.target.value })
-                  }
-                  required
-                />
-              </div>
+            <TabsContent value="signup">
+              <form onSubmit={handleSignUp} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="signup-name">Full Name</Label>
+                  <Input
+                    id="signup-name"
+                    type="text"
+                    placeholder="John Doe"
+                    value={signUpData.fullName}
+                    onChange={(e) =>
+                      setSignUpData({ ...signUpData, fullName: e.target.value })
+                    }
+                    required
+                  />
+                </div>
 
-              <Button
-                type="submit"
-                variant="bet"
-                className="w-full"
-                disabled={loading}
-              >
-                {loading ? 'Creating account...' : 'Sign Up'}
-              </Button>
-            </form>
-          </TabsContent>
-        </Tabs>
+                <div className="space-y-2">
+                  <Label htmlFor="signup-email">Email</Label>
+                  <Input
+                    id="signup-email"
+                    type="email"
+                    placeholder="your@email.com"
+                    value={signUpData.email}
+                    onChange={(e) =>
+                      setSignUpData({ ...signUpData, email: e.target.value })
+                    }
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="signup-password">Password</Label>
+                  <Input
+                    id="signup-password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={signUpData.password}
+                    onChange={(e) =>
+                      setSignUpData({ ...signUpData, password: e.target.value })
+                    }
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="signup-phone">Phone Number</Label>
+                  <Input
+                    id="signup-phone"
+                    type="tel"
+                    placeholder="+254712345678 or 0712345678"
+                    value={signUpData.phoneNumber}
+                    onChange={(e) =>
+                      setSignUpData({ ...signUpData, phoneNumber: e.target.value })
+                    }
+                    required
+                  />
+                </div>
+
+                <Button
+                  type="submit"
+                  variant="bet"
+                  className="w-full"
+                  disabled={loading}
+                >
+                  {loading ? 'Creating account...' : 'Sign Up'}
+                </Button>
+              </form>
+            </TabsContent>
+          </Tabs>
+        )}
 
         <div className="mt-6 text-center text-sm text-muted-foreground">
           <p>Demo Mode • Play Money Only</p>
