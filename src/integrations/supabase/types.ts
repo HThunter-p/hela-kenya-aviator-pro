@@ -226,6 +226,27 @@ export type Database = {
           },
         ]
       }
+      round_history: {
+        Row: {
+          crash_multiplier: number
+          created_at: string
+          id: string
+          round_number: number
+        }
+        Insert: {
+          crash_multiplier: number
+          created_at?: string
+          id?: string
+          round_number?: number
+        }
+        Update: {
+          crash_multiplier?: number
+          created_at?: string
+          id?: string
+          round_number?: number
+        }
+        Relationships: []
+      }
       transactions: {
         Row: {
           amount: number

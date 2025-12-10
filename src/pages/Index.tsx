@@ -127,6 +127,16 @@ const Index = () => {
     setCrashed(true);
     setCanCashOut({ 1: false, 2: false, 3: false });
 
+    // Record round history (crash multiplier) - admin only via RLS, but we try anyway
+    // The round history insert will silently fail for non-admins due to RLS
+    supabase.from('round_history').insert({
+      crash_multiplier: multiplier,
+    }).then(({ error }) => {
+      if (error) {
+        console.log('Round history not recorded (expected for non-admins)');
+      }
+    });
+
     // Process all active bets
     const activeBets = Object.entries(currentBets).filter(([_, amount]) => amount > 0);
     
