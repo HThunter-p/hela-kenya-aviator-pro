@@ -67,7 +67,7 @@ export const MultiplierHistory = () => {
   return (
     <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin">
       <span className="text-xs text-muted-foreground whitespace-nowrap font-medium">History:</span>
-      <div className="flex gap-1.5">
+      <div className="flex flex-row-reverse justify-end gap-1.5">
         {history.map((round) => (
           <span
             key={round.id}
