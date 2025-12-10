@@ -111,7 +111,7 @@ const Index = () => {
         const crashProbability = baseProb + multiplierFactor + randomSpike + Math.abs(timeVariance);
         
         if (Math.random() < crashProbability) {
-          handleCrash();
+          handleCrash(newMultiplier);
           return prev;
         }
 
@@ -122,18 +122,17 @@ const Index = () => {
     return () => clearInterval(interval);
   }, [isFlying, autoplay, canCashOut, currentBets, autoCashoutMultiplier]);
 
-  const handleCrash = useCallback(async () => {
+  const handleCrash = useCallback(async (crashMultiplier: number) => {
     setIsFlying(false);
     setCrashed(true);
     setCanCashOut({ 1: false, 2: false, 3: false });
 
-    // Record round history (crash multiplier) - admin only via RLS, but we try anyway
-    // The round history insert will silently fail for non-admins due to RLS
+    // Record round history (crash multiplier)
     supabase.from('round_history').insert({
-      crash_multiplier: multiplier,
+      crash_multiplier: crashMultiplier,
     }).then(({ error }) => {
       if (error) {
-        console.log('Round history not recorded (expected for non-admins)');
+        console.log('Round history not recorded:', error.message);
       }
     });
 
@@ -149,7 +148,7 @@ const Index = () => {
             .from('live_bets')
             .update({
               status: 'lost',
-              multiplier,
+              multiplier: crashMultiplier,
             })
             .eq('id', liveBetId);
         }
@@ -158,7 +157,7 @@ const Index = () => {
         await supabase.from('bet_history').insert({
           user_id: user.id,
           amount: betAmount,
-          multiplier,
+          multiplier: crashMultiplier,
           payout: 0,
           won: false,
         });
@@ -168,13 +167,13 @@ const Index = () => {
           user_id: user.id,
           amount: -betAmount,
           type: 'bet',
-          description: `Lost bet at ${multiplier.toFixed(2)}x (Panel ${panelId})`,
+          description: `Lost bet at ${crashMultiplier.toFixed(2)}x (Panel ${panelId})`,
         });
 
         const bet: Bet = {
           id: `${Date.now()}-${panelId}`,
           amount: betAmount,
-          multiplier,
+          multiplier: crashMultiplier,
           payout: 0,
           won: false,
           time: new Date().toLocaleTimeString(),
@@ -184,7 +183,7 @@ const Index = () => {
       
       setCurrentBets({ 1: 0, 2: 0, 3: 0 });
       setActiveLiveBetIds({ 1: null, 2: null, 3: null });
-      toast.error(`Crashed at ${multiplier.toFixed(2)}x! Better luck next time.`);
+      toast.error(`Crashed at ${crashMultiplier.toFixed(2)}x! Better luck next time.`);
     }
 
     // Start new round after 3 seconds
