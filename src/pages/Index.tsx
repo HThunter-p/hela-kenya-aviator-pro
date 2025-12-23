@@ -15,6 +15,7 @@ import Navigation from '@/components/Navigation';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Plane, Trophy, TrendingUp, LogOut } from 'lucide-react';
+import logo from '@/assets/logo.png';
 
 interface Bet {
   id: string;
@@ -369,7 +370,7 @@ const Index = () => {
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="text-3xl">✈️</div>
+              <img src={logo} alt="HelaKenya Logo" className="h-12 w-12 object-contain" />
               <div>
                 <h1 className="text-2xl font-black text-primary">HelaKenya</h1>
                 <p className="text-xs text-muted-foreground">Aviator Game</p>
