@@ -136,6 +136,18 @@ const Index = () => {
       }
     });
 
+    // Consume the first future round (delete the lowest round_number)
+    supabase
+      .from('future_rounds')
+      .delete()
+      .order('round_number', { ascending: true })
+      .limit(1)
+      .then(({ error }) => {
+        if (error) {
+          console.log('Future round not consumed:', error.message);
+        }
+      });
+
     // Process all active bets
     const activeBets = Object.entries(currentBets).filter(([_, amount]) => amount > 0);
     
