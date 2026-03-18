@@ -516,9 +516,9 @@ const Index = () => {
           </div>
         </div>
 
-        {/* Bet History */}
+        {/* Game History */}
         <div className="mt-8">
-          <BetHistory bets={betHistory} />
+          <GameHistory userId={user?.id} />
         </div>
       </main>
 
