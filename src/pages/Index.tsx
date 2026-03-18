@@ -134,17 +134,19 @@ const Index = () => {
           }
         });
 
-        // Highly unpredictable crash probability with multiple random factors
-        const baseProb = 0.015;
-        const multiplierFactor = Math.pow(newMultiplier, 1.5) / 1000;
-        const randomSpike = Math.random() < 0.1 ? Math.random() * 0.05 : 0;
-        const timeVariance = Math.sin(Date.now() / 1000) * 0.01;
-        
-        const crashProbability = baseProb + multiplierFactor + randomSpike + Math.abs(timeVariance);
-        
-        if (Math.random() < crashProbability) {
-          handleCrash(newMultiplier);
+        // Use pre-determined crash point from future_rounds
+        if (targetCrashMultiplier && newMultiplier >= targetCrashMultiplier) {
+          handleCrash(targetCrashMultiplier);
           return prev;
+        }
+
+        // Fallback: if no target set, use random crash (shouldn't normally happen)
+        if (!targetCrashMultiplier) {
+          const crashProbability = 0.015 + Math.pow(newMultiplier, 1.5) / 1000;
+          if (Math.random() < crashProbability) {
+            handleCrash(newMultiplier);
+            return prev;
+          }
         }
 
         return newMultiplier;
@@ -152,7 +154,7 @@ const Index = () => {
     }, 100);
 
     return () => clearInterval(interval);
-  }, [isFlying, autoplay, canCashOut, currentBets, autoCashoutMultiplier]);
+  }, [isFlying, autoplay, canCashOut, currentBets, autoCashoutMultiplier, targetCrashMultiplier]);
 
   const handleCrash = useCallback(async (crashMultiplier: number) => {
     setIsFlying(false);
