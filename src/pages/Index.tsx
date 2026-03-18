@@ -42,6 +42,37 @@ const Index = () => {
   const [autoplay, setAutoplay] = useState<{ [key: number]: boolean }>({ 1: false, 2: false, 3: false });
   const [autoCashoutMultiplier, setAutoCashoutMultiplier] = useState<{ [key: number]: number }>({ 1: 2.0, 2: 2.0, 3: 2.0 });
   const [activeLiveBetIds, setActiveLiveBetIds] = useState<{ [key: number]: string | null }>({ 1: null, 2: null, 3: null });
+  const [targetCrashMultiplier, setTargetCrashMultiplier] = useState<number | null>(null);
+  const [currentFutureRoundId, setCurrentFutureRoundId] = useState<string | null>(null);
+
+  // Fetch next crash multiplier from future_rounds
+  const fetchNextCrashPoint = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('future_rounds')
+      .select('*')
+      .order('round_number', { ascending: true })
+      .limit(1)
+      .single();
+
+    if (error || !data) {
+      // If no future round, generate them and retry
+      await supabase.rpc('generate_future_rounds' as any);
+      const { data: retryData } = await supabase
+        .from('future_rounds')
+        .select('*')
+        .order('round_number', { ascending: true })
+        .limit(1)
+        .single();
+      if (retryData) {
+        setTargetCrashMultiplier(parseFloat(retryData.crash_multiplier.toString()));
+        setCurrentFutureRoundId(retryData.id);
+      }
+      return;
+    }
+
+    setTargetCrashMultiplier(parseFloat(data.crash_multiplier.toString()));
+    setCurrentFutureRoundId(data.id);
+  }, []);
 
   // Redirect to auth if not logged in
   useEffect(() => {
