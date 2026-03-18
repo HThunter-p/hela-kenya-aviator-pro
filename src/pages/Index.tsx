@@ -382,6 +382,9 @@ const Index = () => {
   useEffect(() => {
     if (!user) return;
 
+    // Fetch initial crash point, then start round
+    fetchNextCrashPoint();
+
     const timer = setTimeout(() => {
       startNewRound();
     }, 2000);
