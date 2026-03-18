@@ -42,6 +42,37 @@ const Index = () => {
   const [autoplay, setAutoplay] = useState<{ [key: number]: boolean }>({ 1: false, 2: false, 3: false });
   const [autoCashoutMultiplier, setAutoCashoutMultiplier] = useState<{ [key: number]: number }>({ 1: 2.0, 2: 2.0, 3: 2.0 });
   const [activeLiveBetIds, setActiveLiveBetIds] = useState<{ [key: number]: string | null }>({ 1: null, 2: null, 3: null });
+  const [targetCrashMultiplier, setTargetCrashMultiplier] = useState<number | null>(null);
+  const [currentFutureRoundId, setCurrentFutureRoundId] = useState<string | null>(null);
+
+  // Fetch next crash multiplier from future_rounds
+  const fetchNextCrashPoint = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('future_rounds')
+      .select('*')
+      .order('round_number', { ascending: true })
+      .limit(1)
+      .single();
+
+    if (error || !data) {
+      // If no future round, generate them and retry
+      await supabase.rpc('generate_future_rounds' as any);
+      const { data: retryData } = await supabase
+        .from('future_rounds')
+        .select('*')
+        .order('round_number', { ascending: true })
+        .limit(1)
+        .single();
+      if (retryData) {
+        setTargetCrashMultiplier(parseFloat(retryData.crash_multiplier.toString()));
+        setCurrentFutureRoundId(retryData.id);
+      }
+      return;
+    }
+
+    setTargetCrashMultiplier(parseFloat(data.crash_multiplier.toString()));
+    setCurrentFutureRoundId(data.id);
+  }, []);
 
   // Redirect to auth if not logged in
   useEffect(() => {
@@ -103,17 +134,19 @@ const Index = () => {
           }
         });
 
-        // Highly unpredictable crash probability with multiple random factors
-        const baseProb = 0.015;
-        const multiplierFactor = Math.pow(newMultiplier, 1.5) / 1000;
-        const randomSpike = Math.random() < 0.1 ? Math.random() * 0.05 : 0;
-        const timeVariance = Math.sin(Date.now() / 1000) * 0.01;
-        
-        const crashProbability = baseProb + multiplierFactor + randomSpike + Math.abs(timeVariance);
-        
-        if (Math.random() < crashProbability) {
-          handleCrash(newMultiplier);
+        // Use pre-determined crash point from future_rounds
+        if (targetCrashMultiplier && newMultiplier >= targetCrashMultiplier) {
+          handleCrash(targetCrashMultiplier);
           return prev;
+        }
+
+        // Fallback: if no target set, use random crash (shouldn't normally happen)
+        if (!targetCrashMultiplier) {
+          const crashProbability = 0.015 + Math.pow(newMultiplier, 1.5) / 1000;
+          if (Math.random() < crashProbability) {
+            handleCrash(newMultiplier);
+            return prev;
+          }
         }
 
         return newMultiplier;
@@ -121,7 +154,7 @@ const Index = () => {
     }, 100);
 
     return () => clearInterval(interval);
-  }, [isFlying, autoplay, canCashOut, currentBets, autoCashoutMultiplier]);
+  }, [isFlying, autoplay, canCashOut, currentBets, autoCashoutMultiplier, targetCrashMultiplier]);
 
   const handleCrash = useCallback(async (crashMultiplier: number) => {
     setIsFlying(false);
@@ -137,17 +170,19 @@ const Index = () => {
       }
     });
 
-    // Consume the first future round (delete the lowest round_number)
-    supabase
-      .from('future_rounds')
-      .delete()
-      .order('round_number', { ascending: true })
-      .limit(1)
-      .then(({ error }) => {
-        if (error) {
-          console.log('Future round not consumed:', error.message);
-        }
-      });
+    // Consume the used future round by ID
+    if (currentFutureRoundId) {
+      await supabase
+        .from('future_rounds')
+        .delete()
+        .eq('id', currentFutureRoundId);
+      
+      setCurrentFutureRoundId(null);
+      setTargetCrashMultiplier(null);
+    }
+
+    // Generate new future rounds to replace consumed one
+    await supabase.rpc('generate_future_rounds' as any);
 
     // Process all active bets
     const activeBets = Object.entries(currentBets).filter(([_, amount]) => amount > 0);
@@ -203,28 +238,30 @@ const Index = () => {
     setTimeout(() => {
       startNewRound();
     }, 3000);
-  }, [currentBets, multiplier, user]);
+  }, [currentBets, multiplier, user, currentFutureRoundId]);
 
-  const startNewRound = () => {
+  const startNewRound = useCallback(() => {
     setCrashed(false);
     setMultiplier(1.0);
     setCanBet(true);
+    
+    // Fetch next crash point for the upcoming round
+    fetchNextCrashPoint();
     
     // Auto-bet for panels with autoplay enabled
     setTimeout(() => {
       Object.entries(autoplay).forEach(([panelId, enabled]) => {
         if (enabled && currentBets[Number(panelId)] === 0) {
-          // Use last bet amount or default
           handleBet(Number(panelId), 100);
         }
       });
-    }, 9000); // Place bets 1 second before flight starts
+    }, 9000);
     
     setTimeout(() => {
       setIsFlying(true);
       setCanBet(false);
     }, 10000);
-  };
+  }, [fetchNextCrashPoint, autoplay, currentBets]);
 
   const handleBet = async (panelId: number, amount: number) => {
     if (!profile || !user) return;
@@ -344,6 +381,9 @@ const Index = () => {
   // Start the first round
   useEffect(() => {
     if (!user) return;
+
+    // Fetch initial crash point, then start round
+    fetchNextCrashPoint();
 
     const timer = setTimeout(() => {
       startNewRound();
