@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BettingPanel } from '@/components/BettingPanel';
-import { BetHistory } from '@/components/BetHistory';
+import { GameHistory } from '@/components/GameHistory';
 import { MultiplierDisplay } from '@/components/MultiplierDisplay';
 import { DepositModal } from '@/components/DepositModal';
 import { Button } from '@/components/ui/button';
@@ -516,9 +516,9 @@ const Index = () => {
           </div>
         </div>
 
-        {/* Bet History */}
+        {/* Game History */}
         <div className="mt-8">
-          <BetHistory bets={betHistory} />
+          <GameHistory userId={user?.id} />
         </div>
       </main>
 
