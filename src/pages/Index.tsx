@@ -240,26 +240,28 @@ const Index = () => {
     }, 3000);
   }, [currentBets, multiplier, user, currentFutureRoundId]);
 
-  const startNewRound = () => {
+  const startNewRound = useCallback(() => {
     setCrashed(false);
     setMultiplier(1.0);
     setCanBet(true);
+    
+    // Fetch next crash point for the upcoming round
+    fetchNextCrashPoint();
     
     // Auto-bet for panels with autoplay enabled
     setTimeout(() => {
       Object.entries(autoplay).forEach(([panelId, enabled]) => {
         if (enabled && currentBets[Number(panelId)] === 0) {
-          // Use last bet amount or default
           handleBet(Number(panelId), 100);
         }
       });
-    }, 9000); // Place bets 1 second before flight starts
+    }, 9000);
     
     setTimeout(() => {
       setIsFlying(true);
       setCanBet(false);
     }, 10000);
-  };
+  }, [fetchNextCrashPoint, autoplay, currentBets]);
 
   const handleBet = async (panelId: number, amount: number) => {
     if (!profile || !user) return;
