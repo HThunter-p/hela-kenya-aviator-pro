@@ -170,17 +170,19 @@ const Index = () => {
       }
     });
 
-    // Consume the first future round (delete the lowest round_number)
-    supabase
-      .from('future_rounds')
-      .delete()
-      .order('round_number', { ascending: true })
-      .limit(1)
-      .then(({ error }) => {
-        if (error) {
-          console.log('Future round not consumed:', error.message);
-        }
-      });
+    // Consume the used future round by ID
+    if (currentFutureRoundId) {
+      await supabase
+        .from('future_rounds')
+        .delete()
+        .eq('id', currentFutureRoundId);
+      
+      setCurrentFutureRoundId(null);
+      setTargetCrashMultiplier(null);
+    }
+
+    // Generate new future rounds to replace consumed one
+    await supabase.rpc('generate_future_rounds' as any);
 
     // Process all active bets
     const activeBets = Object.entries(currentBets).filter(([_, amount]) => amount > 0);
@@ -236,7 +238,7 @@ const Index = () => {
     setTimeout(() => {
       startNewRound();
     }, 3000);
-  }, [currentBets, multiplier, user]);
+  }, [currentBets, multiplier, user, currentFutureRoundId]);
 
   const startNewRound = () => {
     setCrashed(false);
